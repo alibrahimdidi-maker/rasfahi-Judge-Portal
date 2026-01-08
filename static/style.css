@@ -1,0 +1,101 @@
+:root {
+    --gold: #D4AF37;
+    --dark-green: #004225;
+    --cream: #fdf5e6;
+    --black: #1a1a1a;
+}
+
+body {
+    font-family: 'Faruma', 'Amiri', serif;
+    margin: 0;
+    padding: 0;
+    direction: rtl;
+    background-color: var(--dark-green);
+    color: var(--cream);
+    overflow-x: hidden;
+}
+
+/* ޝާހީ ބޯޑަރު ސްޓައިލް */
+.royal-border {
+    border: 4px solid var(--gold);
+    border-radius: 15px;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.6);
+    box-shadow: 0 0 20px var(--gold);
+    margin: 20px;
+    position: relative;
+}
+
+.royal-border::before {
+    content: "۞";
+    position: absolute;
+    top: -20px;
+    right: 50%;
+    font-size: 40px;
+    color: var(--gold);
+    background: var(--dark-green);
+    padding: 0 10px;
+}
+
+h1, h2, h3 {
+    color: var(--gold);
+    text-align: center;
+    text-shadow: 2px 2px 4px black;
+}
+
+/* ބަޓަންތައް */
+button {
+    background: linear-gradient(45deg, #B8860B, #FFD700);
+    border: 2px solid #fff;
+    padding: 10px 20px;
+    font-size: 18px;
+    cursor: pointer;
+    font-family: 'Faruma';
+    border-radius: 8px;
+    transition: 0.3s;
+}
+
+button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 15px white;
+}
+
+/* ސުވާލު ގްރިޑް */
+.grid-container {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 15px;
+    padding: 20px;
+}
+
+.q-card {
+    background: var(--gold);
+    color: black;
+    padding: 20px;
+    font-size: 24px;
+    text-align: center;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.q-card.disabled {
+    background: #555;
+    color: #888;
+    pointer-events: none;
+}
+
+/* ސްޓޫޑެންޓް އިންފޯ */
+.student-display {
+    text-align: center;
+    animation: fadeIn 1s;
+}
+.student-display img {
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    border: 5px solid var(--gold);
+}
+
+/* ތީމްތައް */
+.theme-blue { background-color: #001f3f; }
+.theme-red { background-color: #3d0000; }
