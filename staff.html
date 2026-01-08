@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="royal-border">
+    <h2>ވެއިޓިންގ ރޫމް / ހޯލް ކޮންޓްރޯލް</h2>
+    <div style="display: flex; gap: 20px;">
+        <div style="flex: 1;">
+            <h3>ކިޔޫގައި ތިބި ދަރިވަރުން</h3>
+            <ul style="list-style: none; padding: 0;">
+                {% for s in students %}
+                <li style="background: rgba(0,0,0,0.3); margin: 5px; padding: 10px; display: flex; justify-content: space-between;">
+                    <span>{{ s.name }} ({{ s.cat }})</span>
+                    <button onclick="sendToStage('{{ s.id }}')">ސްޓޭޖަށް ފޮނުވާ</button>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+    function sendToStage(id) {
+        if(confirm("މި ދަރިވަރު ސްޓޭޖަށް ފޮނުވަންވީތަ؟")) {
+            socket.emit('staff_send_student', {id: id});
+        }
+    }
+</script>
+{% endblock %}
+{% endblock %}
