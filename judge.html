@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="royal-border">
+    <h2>ޖަޖިންގ ވިންޑޯ</h2>
+    
+    <div id="judge-student-view" style="display:none; text-align: center;">
+        <img id="j-img" src="" width="100">
+        <h2 id="j-name"></h2>
+        <p>ކެޓަގަރީ: <span id="j-cat"></span></p>
+    </div>
+
+    <hr style="border-color: var(--gold);">
+
+    <div style="background: white; color: black; padding: 20px; border-radius: 10px; min-height: 150px;">
+        <h3>ސުވާލު (ދަރިވަރަށް ނުފެންނާނެ):</h3>
+        <p id="judge-question-text" style="font-size: 24px; font-weight: bold;">...</p>
+    </div>
+
+    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+        <input type="number" placeholder="ތަޖުވީދު" style="padding: 10px;">
+        <input type="number" placeholder="ހިފްޡް" style="padding: 10px;">
+        <button>މާކުސް ސޭވްކުރޭ</button>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+    socket.on('update_student', (student) => {
+        document.getElementById('judge-student-view').style.display = 'block';
+        document.getElementById('j-name').innerText = student.name;
+        document.getElementById('j-cat').innerText = student.cat;
+        // ފޮޓޯ ޕާތު ރަނގަޅު ކުރަންވާނެ
+        document.getElementById('j-img').src = '/static/images/' + student.photo;
+        document.getElementById('judge-question-text').innerText = "...";
+    });
+
+    socket.on('show_question_judge', (q) => {
+        document.getElementById('judge-question-text').innerText = q.text;
+    });
+</script>
+{% endblock %}
+{% endblock %}
