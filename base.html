@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="dv">
+<head>
+    <meta charset="UTF-8">
+    <title>Rasfahi Judge Portal</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body id="main-body">
+    <div class="header">
+        <h1>ރަސްފަހި ޖަޖިންގ ޕޯޓަލް</h1>
+    </div>
+    <div id="content">
+        {% block content %}{% endblock %}
+    </div>
+
+    <script>
+        const socket = io();
+        
+        // ތީމް ބަދަލުވުން
+        socket.on('apply_theme', (theme) => {
+            document.getElementById('main-body').className = theme;
+        });
+
+        // ކޮންމެ ޕޭޖަކަށް ބޭނުންވާ ސްކްރިޕްޓް
+        {% block scripts %}{% endblock %}
+    </script>
+</body>
+</html>
