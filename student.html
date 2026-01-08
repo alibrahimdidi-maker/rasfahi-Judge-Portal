@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="royal-border" style="height: 90vh;">
+    <div id="stu-info" class="student-display" style="display: none;">
+        <h1 id="stu-name-display" style="font-size: 4em;"></h1>
+    </div>
+
+    <div id="q-grid" class="grid-container" style="display: none;">
+        <script>
+            for(let i=1; i<=20; i++){
+                document.write(`<div class="q-card" id="q-btn-${i}" onclick="pickQ(${i})">${i}</div>`);
+            }
+        </script>
+    </div>
+
+    <div id="selected-q-display" style="text-align: center; font-size: 5em; color: var(--gold); display:none;">
+        <p>ސުވާލު ނަންބަރު</p>
+        <span id="big-q-num"></span>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+    socket.on('update_student', (student) => {
+        document.getElementById('stu-info').style.display = 'block';
+        document.getElementById('q-grid').style.display = 'grid';
+        document.getElementById('selected-q-display').style.display = 'none';
+        
+        document.getElementById('stu-name-display').innerText = student.name;
+        
+        // ގްރިޑް ރީސެޓް ކުރުން
+        document.querySelectorAll('.q-card').forEach(el => {
+            el.classList.remove('disabled');
+            el.style.backgroundColor = 'var(--gold)';
+        });
+    });
+
+    function pickQ(num) {
+        socket.emit('student_pick_question', {num: num});
+        // އެނިމޭޝަން ދެއްކިދާނެ
+    }
+
+    socket.on('show_question_student', (data) => {
+        document.getElementById('q-grid').style.display = 'none';
+        document.getElementById('selected-q-display').style.display = 'block';
+        document.getElementById('big-q-num').innerText = data.id;
+    });
+</script>
+{% endblock %}
+{% endblock %}
