@@ -252,9 +252,125 @@ export async function students(view) {
     canEdit() ? h("button.btn.primary", { onclick: () => edit() }, "+ ދަރިވަރެއް") : null,
     canEdit() ? h("button.btn.orange", { onclick: () => importCSV() }, "📥 CSV ތެރެ ކިޔެވުން") : null,
     h("button.btn", { onclick: () => exportCSV() }, "⬇ CSV"), h("button.btn", { onclick: () => printList() }, "🖨 ލިސްޓް"),
-    h("button.btn", { onclick: () => printDoc("ދަރިވަރު ކާޑު", admitCardsHTML(filtered(), Object.fromEntries(sessions.map(s => [s.id, s])))) }, "🪪 ކާޑު")), box);
+    h("button.btn", { onclick: () => printDoc("ދަރިވަރު ކާޑު", admitCardsHTML(filtered(), Object.fromEntries(sessions.map(s => [s.id, s])))) }, "🪪 ކާޑު"),
+    // Dummy download panel toggle
+    h("button.btn.orange", { title:"ޑަމީ — ސިސްޓަމް ޓެސްޓް", onclick: () => { const p=card.querySelector(".dummy-panel"); if(p){p.remove();}else{card.appendChild(dummyPanel());} } }, "🧪 ﺩَﻣِّﻲ")), box);
   view.appendChild(card);
   let list = [];
+  // ---------------------------------------------------------------- DUMMY PANEL
+  function dummyPanel() {
+    const wrap = h("div.dummy-panel", { style: "border:2px dashed var(--gold);border-radius:12px;padding:16px;margin-top:14px;background:rgba(201,164,67,.06)" });
+    wrap.appendChild(h("h3", { style: "margin:0 0 6px" }, "🧪 ﭨِﺴْﭨِﻴﻨْﮒ & ﺩَﻣِّﻲ ﺩَﺍﺋِﻤِﻲ"));
+    wrap.appendChild(h("p.small.muted", { style:"margin:0 0 12px" },
+      "2000 ދަރިވަރު، 8 ކެޓަގަރީ، 5 ޖަޖުންގެ ސިސްޓަމް ޓެސްޓް ފައިލް ޑައުންލޯޑްކޮށް ތިން ގޮތަށް ބޭނުންކުރެވޭ:"));
+    wrap.appendChild(h("div.grid3", { style: "gap:10px;margin-bottom:14px" },
+      h("div", { style: "border:1px solid var(--line2);border-radius:10px;padding:12px" },
+        h("div", { style: "font-size:13px;font-weight:700;margin-bottom:6px;color:var(--gold2)" }, "⬇ CSV — މާކްސް ހިމެނޭ"),
+        h("p.small.muted", { style:"margin:0 0 8px" }, "2000 ދަރިވަރު + 5 ޖަޖުންގެ މާކްސް ހިމެނޭ — ނަތީޖާ ހަދާ ގޮތް ބެލެން"),
+        h("button.btn.primary", { onclick: () => makeBigDummyCSV(true) }, "⬇ ޑައުންލޯޑް (މާކްސް ހިމެނޭ)")),
+      h("div", { style: "border:1px solid var(--line2);border-radius:10px;padding:12px" },
+        h("div", { style: "font-size:13px;font-weight:700;margin-bottom:6px;color:var(--gold2)" }, "⬇ CSV — ހުސް ގޮޅި"),
+        h("p.small.muted", { style:"margin:0 0 8px" }, "2000 ދަރިވަރު + ހުސް ގޮޅި — ނަތީޖާ ލިޔެ ނިންމި ގޮތް ދެނެގަންނަން"),
+        h("button.btn", { onclick: () => makeBigDummyCSV(false) }, "⬇ ޑައުންލޯޑް (ހުސް ގޮޅި)")),
+      h("div", { style: "border:1px solid var(--line2);border-radius:10px;padding:12px" },
+        h("div", { style: "font-size:13px;font-weight:700;margin-bottom:6px;color:var(--gold2)" }, "📥 Google Forms / Excel"),
+        h("p.small.muted", { style:"margin:0 0 8px" }, "ލޯކަލް CSV/Excel ފައިލަކުން ދަރިވަރުން ވެއްދޭ ← ތިރީ CSV ތެރެ"),
+        h("button.btn.orange", { onclick: () => importCSV() }, "📥 CSV ތެރެ ލޯޑްކުރޭ")),
+    ));
+    wrap.appendChild(h("div.row", { style: "gap:10px;flex-wrap:wrap" },
+      h("button.btn.red.sm", { onclick: async () => {
+        const cid = S.settings.activeCompetitionId; if(!cid) return toast("ހިނގަމުންދާ ތ ތ ތ ތ", "warn");
+        const ok = await confirmBox("Firestore ތެރެ ވެއްދުން", "ދ ދ ދ ދ ދ ދ — ދ ދ ދ ދ ދ ދ ދ ދ ދ ދ ދ ދ", "ވެއްދޭ","red"); if(!ok) return;
+        await importDummyToFirestore(cid, false);
+      } }, "🔥 Firestore — ހުސް ގޮޅި"),
+      h("button.btn.red.sm", { onclick: async () => {
+        const cid = S.settings.activeCompetitionId; if(!cid) return toast("ހިނގަމުންދާ ތ ތ ތ ތ ތ", "warn");
+        const ok = await confirmBox("Firestore ތެރެ ވެއްދުން", "ދ ދ ދ ދ ދ ދ — ދ ދ ދ ދ ދ ދ ދ ދ ދ ދ ދ ދ", "ވެއްދޭ","red"); if(!ok) return;
+        await importDummyToFirestore(cid, true);
+      } }, "🔥 Firestore — މާކްސް ހިމެނޭ"),
+    ));
+    return wrap;
+  }
+  // --- shared dummy data generator ---
+  const DUMMY_ISLANDS=["Male","Hulhumale","Addu","Fuvahmulah","Naifaru","Eydhafushi","Maamigili","Mahibadhoo","Velidhoo","Kulhudhuffushi","Felidhoo","Gan","Thinadhoo","Hithadhoo","Dharavandhoo"];
+  const DUMMY_SCHOOLS=["Aminiyya School","Iskandhar School","Ghiyaasuddin Int'l","Billabong High","Ameer Ahmed School","IUM","Fiyavathi School","Maafannu Middle","Hiriya School","Dharumavantha School","Rehendhi School","Haamidh School","Thaajudhdeen School","Kenereege School","Arabiyya School"];
+  const DUMMY_ISOTYPES=["School","University","QuranClass","Private","Club","Office"];
+  const DUMMY_FNAMES_M=["ﻋَﻠِﻲّ","ﺃَﺣْﻤَﺪ","ﻣُﺤَﻤَّﺪ","ﺇِﺑْﺮَﺍﻫِﻴﻢ","ﻳُﻮﺳُﻒ","ﺣَﺴَﻦ","ﻋَﺒْﺪُﺍﻟﻠَّﻪ","ﻋُﻤَﺮ","ﻣُﻮﺳَﻰ","ﻋِﻴﺴَﻰ","ﻫَﺎﺭُﻭﻥ","ﺻَﺎﻟِﺢ","ﻳَﺤْﻴَﻰ","ﺃَﺑُﻮﺑَﻜْﺮ","ﺃَﻧَﺲ"];
+  const DUMMY_FNAMES_F=["ﻓَﺎﻃِﻤَﺔ","ﺃَﺋِﺸَﺔ","ﺧَﺪِﻳﺠَﺔ","ﻣَﺮْﻳَﻢ","ﺯَﻳْﻨَﺐ","ﺃَﻣِﻴﻨَﺔ","ﻫَﺎﺟَﺮ","ﺭُﻗَﻴَّﺔ","ﺃَﺳِﻴﺮَﺓ","ﻧَﻔِﻴﺴَﺔ","ﺃَﻣَﻞ","ﻧُﻮﺭ","ﺣَﻔِﻴﻈَﺔ","ﺷَﻬِﻴﺪَﺓ","ﺳُﻮﺩَﺓ"];
+  const DUMMY_LNAMES=["ﺃَﺣْﻤَﺪ","ﻋَﻠِﻲّ","ﻣُﺤَﻤَّﺪ","ﺣَﺴَﻦ","ﺇِﺑْﺮَﺍﻫِﻴﻢ","ﺳَﻌِﻴﺪ","ﻋَﺒْﺪُﺍﻟﻠَّﻪ","ﻣُﻮﺳَﻰ","ﺭَﺷِﻴﺪ","ﻧَﺎﺻِﺮ","ﻣُﺤَﻤَّﺪ","ﻭَﺣِﻴﺪ","ﻟَﻄِﻴﻒ","ﺷَﺎﻓِﻲ","ﻓَﺮِﻳﺪ"];
+  const DUMMY_CATS2=[
+    {id:"dc_u8_b",  name:"U8 ﺑَﻠَﺎﺉ",  ag:"U8",  br:"balaigen",  rub:[{k:"thilawa",max:40},{k:"tajweed",max:30},{k:"maqamat",max:20},{k:"fasaha",max:10}]},
+    {id:"dc_u8_nb", name:"U8 ﻧُﺒَﻠَﺎﺉ", ag:"U8",  br:"nubalaigen",rub:[{k:"thilawa",max:40},{k:"tajweed",max:30},{k:"maqamat",max:20},{k:"fasaha",max:10}]},
+    {id:"dc_u13_b", name:"U13 ﺑَﻠَﺎﺉ", ag:"U13", br:"balaigen",  rub:[{k:"thilawa",max:30},{k:"tajweed",max:25},{k:"maqamat",max:25},{k:"fasaha",max:10},{k:"talaffuz",max:10}]},
+    {id:"dc_u13_nb",name:"U13 ﻧُﺒَﻠَﺎﺉ",ag:"U13", br:"nubalaigen",rub:[{k:"thilawa",max:30},{k:"tajweed",max:25},{k:"maqamat",max:25},{k:"fasaha",max:10},{k:"talaffuz",max:10}]},
+    {id:"dc_u18_b", name:"U18 ﺑَﻠَﺎﺉ", ag:"U18", br:"balaigen",  rub:[{k:"thilawa",max:25},{k:"tajweed",max:25},{k:"maqamat",max:20},{k:"sifa",max:20},{k:"fasaha",max:10}]},
+    {id:"dc_u18_nb",name:"U18 ﻧُﺒَﻠَﺎﺉ",ag:"U18", br:"nubalaigen",rub:[{k:"thilawa",max:25},{k:"tajweed",max:25},{k:"maqamat",max:20},{k:"sifa",max:20},{k:"fasaha",max:10}]},
+    {id:"dc_hifz",  name:"ﺣِﻔْﻆ ﺍﻟْﻘُﺮْﺁﻥ",ag:"Open",br:"hifz",     rub:[{k:"hifz",max:50},{k:"tajweed",max:30},{k:"maqamat",max:20}]},
+    {id:"dc_open",  name:"ﺍﻟﻔَﺘَﺢ",     ag:"Open",br:"balaigen",  rub:[{k:"thilawa",max:35},{k:"tajweed",max:30},{k:"maqamat",max:25},{k:"fasaha",max:10}]},
+  ];
+  const JUDGE_NAMES2=["ﺃَﺑُﻮﺑَﻜْﺮ ﺳَﻌِﻴﺪ","ﻋَﻠِﻲّ ﺣَﺴَﻦ","ﻫَﺎﺭُﻭﻥ ﻋَﺒْﺪُﺍﻟﻠَّﻪ","ﻓَﻮْﺯَﺓ ﻣُﺤَﻤَّﺪ","ﺷَﺎﻓِﻲ ﺇِﺑْﺮَﺍﻫِﻴﻢ"];
+  const SCORE_BASES=[0.96,0.91,0.87,0.82,0.93,0.88,0.95,0.84,0.90,0.86];
+
+  function makeDummyRows(withScores, count=2000) {
+    const rows=[]; const yr=new Date().getFullYear();
+    const mnF=DUMMY_FNAMES_M, fnF=DUMMY_FNAMES_F, ln=DUMMY_LNAMES, is=DUMMY_ISLANDS, sc=DUMMY_SCHOOLS, it=DUMMY_ISOTYPES;
+    for(let i=0;i<count;i++){
+      const ci=i%DUMMY_CATS2.length, c=DUMMY_CATS2[ci];
+      const isMale=(i%3)!==0;
+      const fn=(isMale?mnF:fnF)[i%15]; const lname=ln[i%15];
+      const name=`${fn} ${lname}`; const nameEn=`${fn.split(/\s/)[0]}_En ${lname.split(/\s/)[0]}_En`;
+      const age={U8:2018,U13:2013,U18:2008,Open:2000}[c.ag];
+      const dob=`${age-Math.floor(i/count*4)}-${String((i%12)+1).padStart(2,"0")}-${String((i%28)+1).padStart(2,"0")}`;
+      const island=is[i%is.length]; const inst=sc[i%sc.length]; const instType=it[Math.floor(i/count*it.length*2)%it.length];
+      const nid=`A${200000+i+1}`;
+      const reg=`R${String(yr).slice(-2)}-${String(i+1).padStart(4,"0")}`;
+      const row={regNo:reg,nid,name,nameEn,dob,gender:isMale?"M":"F",permAddress:`ﺩ.ﺩَﺍﺭُﻝﺃَﻣَﻞ، ${island}`,island,currentAddress:`ﻙ.ﻣَﺎﻟِﻲ`,
+        phone:`7${String(700000+i+1)}`,email:`${nid.toLowerCase()}@mail.mv`,categoryId:c.id,categoryName:c.name,branch:c.br,ageGroup:c.ag,
+        institution:inst,instType,guardianName:`ﻭَﻟِﻲّ ${lname}`,guardianPhone:`9${String(900000+i+1)}`};
+      if(withScores){
+        const base=SCORE_BASES[i%SCORE_BASES.length];
+        JUDGE_NAMES2.forEach((jn,j)=>{
+          const v=0.95+0.05*(j%3)/2;
+          c.rub.forEach(r=>{ row[`j${j+1}_${r.k}`]=Math.round(r.max*base*v*100)/100; });
+          row[`j${j+1}_total`]=c.rub.reduce((a,r)=>a+Math.round(r.max*base*v*100)/100,0);
+          row[`j${j+1}_name`]=jn;
+        });
+        const tots=JUDGE_NAMES2.map((_,j)=>row[`j${j+1}_total`]);
+        const sorted=[...tots].sort((a,b)=>a-b); row.final_score=Math.round(sorted.slice(1,4).reduce((a,v)=>a+v,0)/3*100)/100;
+        const mx=c.rub.reduce((a,r)=>a+r.max,0); const pct=row.final_score/mx;
+        row.stars=pct>=0.95?5:pct>=0.9?4:pct>=0.85?3:pct>=0.75?2:1;
+      }
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  function makeBigDummyCSV(withScores) {
+    const rows=makeDummyRows(withScores);
+    const baseHdr=["regNo","nid","name","nameEn","dob","gender","permAddress","island","currentAddress","phone","email","categoryId","categoryName","branch","ageGroup","institution","instType","guardianName","guardianPhone"];
+    const scoreHdr=withScores?JUDGE_NAMES2.flatMap((_,j)=>DUMMY_CATS2[0].rub.map(r=>`j${j+1}_${r.k}`).concat([`j${j+1}_total`,`j${j+1}_name`])).concat(["final_score","stars"]):[];
+    const hdr=[...baseHdr,...scoreHdr];
+    const lines=[hdr.join(","),...rows.map(r=>hdr.map(k=>{const v=r[k]??"";return (typeof v==="string"&&v.includes(","))?`"${v}"`:v;}).join(","))];
+    const url="data:text/csv;charset=utf-8,﻿"+encodeURIComponent(lines.join("\n"));
+    const a=document.createElement("a"); a.href=url; a.download=`rasfahi_dummy_2000_${withScores?"with":"no"}_scores.csv`; a.click();
+    toast(`✔ ${rows.length} ދަރިވަރު — CSV ޑައުންލޯޑްވިއްޖެ`);
+  }
+
+  async function importDummyToFirestore(cid, withScores) {
+    toast("ލޯޑުވަނީ...");
+    const rows=makeDummyRows(withScores);
+    for(let i=0;i<rows.length;i+=20){
+      const b=writeBatch(db);
+      rows.slice(i,i+20).forEach((r,j)=>{
+        const id=`${cid}__${r.nid}`;
+        b.set(doc(db,"students",id),{...r,competitionId:cid,status:"active",sessionId:"",order:i+j+1,checkin:null,photoThumb:"",createdAt:serverTimestamp()});
+      });
+      await b.commit();
+    }
+    toast(`✔ ${rows.length} ދަރިވަރު Firestore ތެރެ ވެދިއްޖެ`);
+    load();
+  }
+  // ----------------------------------------------------------------
   async function load() {
     const snap = await getDocs(query(collection(db, "students"), where("competitionId", "==", S.settings.activeCompetitionId)));
     list = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.regNo).localeCompare(String(b.regNo)));
@@ -630,7 +746,7 @@ export async function prints(view) {
         const c = await import("../print.js").then(m => m); // already imported above
         printDoc("ﻧﻮﺗِﻴﺲ ﺑﻮﺭﺩ", noticeBoardHTML(rows, sesById), { landscape: true, sub: sub() });
       }),
-      btn("🪪 ﺩَﺭِﻭَﺭُ ﻛَﺎﺭْﺩُ", rows => printDoc("ﺩَﺭِﻭَﺭُ ﻛَﺎﺭْﺩُ", admitCardsHTML(rows, sesById))),
+      btn("🪪 ދަރިވަރު ކާޑު", rows => printDoc("ދަރިވަރު ކާޑު", admitCardsHTML(rows, sesById))),
       btn("📝 A5 ﺟَﺎﺝ ﺷِﻴﺖ (A5)", rows => {
         const s = sesById[fSes.value];
         const judges = s && s.judges ? s.judges : [];

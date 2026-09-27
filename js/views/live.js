@@ -17,11 +17,11 @@ export async function control(view) {
   const pickSes = select([["", "— ސެޝަން ހޮވާ —"], ...sessions.map(s => [s.id, sessionLabel(s)])], sessionStorage.getItem("liveSes") || "");
   const body = h("div");
   view.append(h("div.card", h("div.row", h("h2", { style: { margin: 0 } }, "ލައިވް ކޮންޓްރޯލް"), h("div.grow", pickSes))), body);
+  let unsubs = [];
   pickSes.onchange = () => { sessionStorage.setItem("liveSes", pickSes.value); start(pickSes.value); };
   if (pickSes.value && sessions.find(s => s.id === pickSes.value)) start(pickSes.value);
   else body.appendChild(empty(sessions.length ? "ސެޝަނެއް ހޮއްވަވާ" : "ހުޅުވިފައިވާ ސެޝަނެއް ނެތް"));
 
-  let unsubs = [];
   function start(sid) {
     unsubs.forEach(u => u()); unsubs = [];
     body.innerHTML = ""; body.appendChild(spinner());
