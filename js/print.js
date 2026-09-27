@@ -26,26 +26,26 @@ export function a5JudgeSheetHTML(students, cat, session, judgeList = []) {
         <div class="a5title">ޖަޖުގެ މާކްސް ޝީޓް</div>
         <div class="a5meta"><span><b>ދަރިވަރު: </b>${esc(s.name)}</span><span><b>ރެޖި: </b>${esc(s.regNo||"")}</span><span><b>ID: </b><span class="ltr">${esc(s.nid||"")}</span></span></div>
         <div class="a5meta"><span><b>ބައި: </b>${esc(s.categoryName||"")}</span><span><b>ސެޝަން: </b>${esc(session?session.name+" "+session.date:"")}</span><span>${esc(jLabel)}</span></div>
-        <div class="a5meta"><span><b>ތަރުތީބު: </b>${esc(String(s.order||""))}</span><span><b>ޖިންސް: </b>${s.gender==="M"?"ފިރިހެން":"އަންހެން"}</span><span><b>ﻋُﻤُﺮ: </b>${s.ageGroup||""}</span></div>
+        <div class="a5meta"><span><b>ތަރުތީބު: </b>${esc(String(s.order||""))}</span><span><b>ޖިންސް: </b>${s.gender==="M"?"ފިރިހެން":"އަންހެން"}</span><span><b>ޢުމުރުފުރާ: </b>${s.ageGroup||""}</span></div>
       </div>
       <table class="a5tbl"><thead><tr><th>ރުބްރިކް</th><th class="num">Max</th><th class="num" style="width:52px">ލިބި</th><th>ނޯޓު</th></tr></thead><tbody>
       ${rub.map(r=>`<tr><td>${esc(r.name)}</td><td class="num">${r.max}</td><td></td><td></td></tr>`).join("")}
       <tr style="font-weight:700"><td>ޖުމްލަ</td><td class="num">${total}</td><td></td><td></td></tr></tbody></table>
-      <div class="a5errors"><b>ކުށްތައް (ﻟَﺤْﻦ ﺟَﻠِﻲّ / ﻟَﺤْﻦ ﺧَﻔِﻲّ):</b><div class="a5errlines"></div></div>
-      <div class="a5sig"><div>ﺗَﻮْﻗِﻴﻊ: _______________</div><div>ﺍﻟﺘَّﺎﺭِﻳﺦ: _______________</div></div>
+      <div class="a5errors"><b>ކުށްތައް (ލަޙްނު ޖަލީ / ލަޙްނު ޚަފީ):</b><div class="a5errlines"></div></div>
+      <div class="a5sig"><div>ޖަޖުގެ ސޮއި: _______________</div><div>ތާރީޚް: _______________</div></div>
     </div>`).join("");
   }).join("");
 }
 
 /* ---- notice board list ---- */
 export function noticeBoardHTML(students, sessionsById = {}, comp = {}) {
-  return `<h2 style="text-align:center;margin:0 0 8px">${esc(comp.name||"")}${comp.year?" "+esc(comp.year):""} — ﻧﻮﺗِﻴﺲ ﺑﻮﺭﺩ</h2>` +
+  return `<h2 style="text-align:center;margin:0 0 8px">${esc(comp.name||"")}${comp.year?" "+esc(comp.year):""} — ނޯޓިސް ބޯޑު</h2>` +
     tableHTML([
       { t: "#", cls: "num", v: (r, i) => r.order || i + 1 },
       { t: "ނަން", v: r => r.name },
       { t: "ރެޖި ނަންބަރ", v: r => r.regNo || "" },
       { t: "ID", cls: "ltr", v: r => r.nid || "" },
-      { t: "ﻋُﻤُﺮ", v: r => r.ageGroup || "" },
+      { t: "ޢުމުރުފުރާ", v: r => r.ageGroup || "" },
       { t: "ބައި / ގޮފި", v: r => r.categoryName || "" },
       { t: "ސެޝަން", v: r => { const s = sessionsById[r.sessionId]; return s ? `${s.name} · ${s.date} ${s.time||""}` : "-"; } },
       { t: "ތަން", v: r => (sessionsById[r.sessionId]||{}).venue || "" },
@@ -57,14 +57,14 @@ export function noticeBoardHTML(students, sessionsById = {}, comp = {}) {
 export function sessionJudgeTableHTML(students, cat, session, judgeSlot = "") {
   const rub = (cat && cat.rubric) || [];
   const total = rub.reduce((a, r) => a + (+r.max || 0), 0);
-  return `<h3 style="text-align:center">ﺟَﺪْوَﻝ ﺍﻟْﺠَﻠْﺴَﺔ — ﺟَﺎﺝ ${esc(String(judgeSlot))}</h3>
+  return `<h3 style="text-align:center">ސެޝަން ޖަދުވަލު — ޖަޖު ${esc(String(judgeSlot))}</h3>
     <div style="text-align:center;margin-bottom:6px">${esc(session ? session.name+" "+session.date+(session.venue ? " "+session.venue : "") : "")}</div>
-    <table><thead><tr><th class="num">#</th><th>ﺍﺳﻢ</th><th>ﺭَﺟِﻲ</th>
+    <table><thead><tr><th class="num">#</th><th>ނަން</th><th>ރެޖި</th>
     ${rub.map(r=>`<th class="num" style="font-size:9px;padding:2px">${esc(r.name)}<br><span style="font-weight:400">(${r.max})</span></th>`).join("")}
     <th class="num">${esc(String(total))}</th></tr></thead><tbody>
     ${students.map((s,i)=>`<tr><td class="num">${s.order||i+1}</td><td>${esc(s.name)}</td><td>${esc(s.regNo||"")}</td>
     ${rub.map(()=>"<td></td>").join("")}<td></td></tr>`).join("")}
-    </tbody></table>${sigBlock(["ﺍﻟﺠَﺎﺝ","ﺗَﻮْﻗِﻴﻊ","ﺍﻟﺘَّﺎﺭِﻳﺦ"])}`;
+    </tbody></table>${sigBlock(["ޖަޖުގެ ނަން","ސޮއި","ތާރީޚް"])}`;
 }
 
 /* ---- ceremony (closing event) print ---- */
@@ -74,13 +74,13 @@ export function ceremonyHTML(rows, comp = {}, topN = 0) {
   const ranked = ranks(filtered.slice().sort((a,b)=>b.final-a.final));
   return `<div class="ceremony-hdr">
     <div class="bs">بِسْمِ آللّهِ آلرَّحْمَٰنِ آلرَّحِيمِ</div>
-    <h1>${esc(comp.name||"ﻧَﺘَﺎﺋِﺞ ﺍﻟْﻤُﺒَﺎﺭَﺍﺓ")}${comp.year?" "+esc(comp.year):""}</h1>
+    <h1>${esc(comp.name||"މުބާރާތުގެ ނަތީޖާ")}${comp.year?" "+esc(comp.year):""}</h1>
     <h2>${comp.organizer||""}</h2><h2>${comp.venue||""}</h2>
   </div>
   <table><thead><tr>
-    <th class="num">ﻭَﻧَﺎ</th><th>ﻧﻢ</th><th>ﺭَﺟِﻲ</th><th>ID</th>
-    <th>ﺑَﺎﺉ</th><th>ﻣُﻌَﺎﺳَّﺴَﺎ</th><th class="num">ﻣَﺎﻛِﺲ</th>
-    <th class="num">ﺗَﺮِﻱ ★</th></tr></thead><tbody>
+    <th class="num">ވަނަ</th><th>ނަން</th><th>ރެޖި</th><th>އައިޑީ</th>
+    <th>ބައި</th><th>މުއައްސަސާ</th><th class="num">މާކްސް</th>
+    <th class="num">ތަރި ★</th></tr></thead><tbody>
   ${ranked.map(r=>`<tr class="${r.rank===1?"rank1":r.rank===2?"rank2":r.rank===3?"rank3":""}">
     <td class="num big">${r.rank}</td><td><b>${esc(r.name)}</b><br><span class="small ltr">${esc(r.nameEn||"")}</span></td>
     <td>${esc(r.regNo||"")}</td><td class="ltr">${esc(r.nid||"")}</td>

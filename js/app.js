@@ -9,7 +9,7 @@ import {
 // apply the last-used colour theme before anything draws (settings load later)
 try { const t = localStorage.getItem("rasfahiTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 
-const V = (file, fn) => async () => (await import(`./views/${file}.js?v=2`))[fn];
+const V = (file, fn) => async () => (await import(`./views/${file}.js?v=3`))[fn];
 
 // Tabs for each role. Only what the super admin gave to the role is available.
 const NAV = {
@@ -90,25 +90,26 @@ function loginView(msg) {
       h("button.gbtn", { onclick: async () => {
         try { await loginGoogle(); } catch (e) { toast("ލޮގިން ނުވި: " + (e.code || e.message), "err"); }
       } }, h("img", { src: "https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg", alt: "" }),
-        "ގޫގުލް ގެ ތެރެ ލޮގިން ވުމަށް"),
+        "ގޫގުލް އިން ލޮގިން ވުމަށް"),
       // authorized-only note
       h("p.login-auth-note", "ހުއްދަ ދީފައިވާ ފަރާތްތަކަށް އެކަނި"),
       // registration form link — big button
       h("a.login-reg-btn", { href: "register.html" },
         h("span.login-reg-icon", "📝"),
         h("span", h("b", "ބައިވެރިވުމުގެ ފޯމު"),
-          h("span.login-reg-sub", "ﻣُﺒَﺎﺭَﺍﺓ ﻓِﻲ ﺗِﻼَﻭَﺓِ ﺍﻟْﻘُﺮْﺁﻥِ ﺍﻟْﻜَﺮِﻳﻢِ"))),
+          h("span.login-reg-sub", "ޤުރްއާން މުބާރާތަށް ބައިވެރިވުމަށް — ފޯމު ފުރުއްވާ"))),
       // footer
       h("p.login-note", "Intellectual property of Ali Ibrahim Didi",
         h("br"), "Qur'an: KFGQPC & Tanzil.net")
     ),
     // footer card
     h("div.login-footer-card",
-      h("p.login-footer-label", "ﺑَﺮَﻧَﺎﻣَﺞٌ ﻣِﻦْ ﺗَﻄْﻮِﻳﺮِ"),
-      h("div.login-footer-brand", "RASFAHI"),
-      h("p.login-footer-copy", "Ali Ibrahim Didi • +960 7791550",
+      h("p.login-footer-label", "A PRODUCT OF"),
+      h("div.login-footer-brand", "ZAADH HOLDING"),
+      h("p.login-footer-label", { style: { marginTop: "8px" } }, "DESIGNED & DEVELOPED BY"),
+      h("p.login-footer-copy", h("b", "Ali Ibrahim Didi"), " | +960 7791550",
         h("br"), "Copyright © RASFAHI · Reg No: MED.03.IP.CR.26.EW5889",
-        h("br"), h("span.login-footer-note", "All rights reserved. Unauthorised use is prohibited."))
+        h("br"), h("span.login-footer-note", "All rights reserved. Unauthorised copying or redistribution is prohibited."))
     )
   ));
 }
@@ -139,7 +140,10 @@ async function boot(user) {
   if (!S.me.active) return noAccess(email, "މި އެކައުންޓް ޑިސޭބަލް ކޮށްފައި");
   await loadSettings();
   audit("login", { role: S.me.role });
-  try { localStorage.setItem("rasfahiOrg", S.settings.activeCompetitionId ? (S.comp && S.comp.organizer ? S.comp.organizer + " — " : "") + "ﻗُﺮْآﻥِ ﻛَﺮِﻳﻢْ" : "ﻗُﺮْآﻥِ ﻛَﺮِﻳﻢْ"); } catch(e){}
+  try {
+    const cid = S.settings.activeCompetitionId;
+    if (cid) { const c = await getDoc(doc(db, "competitions", cid)); if (c.exists()) localStorage.setItem("rasfahiOrg", c.data().organizer || c.data().name || ""); }
+  } catch (e) {}
   shell();
 }
 
