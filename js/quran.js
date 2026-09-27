@@ -25,7 +25,11 @@ export async function loadQuran(opts = {}) {
   }
   if (opts.tanzil && !Q.tanzil) {
     Q.tanzil = await fetchJSON("data/tanzil-uthmani.json?" + VER);
-    Q.tanzilWords = Q.tanzil.ayahs.map(splitTanzil);
+    const firsts = new Set(Q.hafs.surahs.filter(x => x.n !== 1 && x.n !== 9).map(x => x.a));
+    Q.tanzilWords = Q.tanzil.ayahs.map((t, k) => {
+      const w = splitTanzil(t);
+      return firsts.has(k) && w.length > 4 && /^بِسْمِ/.test(w[0]) ? w.slice(4) : w;
+    });
   }
   return Q;
 }
@@ -178,11 +182,25 @@ export function ayahMarkHTML(n) {
 }
 // Render a full Madinah page as 15 justified lines.
 // opts: { range:[ws,we], clickable, dim, marks: {wordIdx: 'jali'|'khafi'}, source:'kfgqpc'|'tanzil', hideOutside }
+function tanzilAt(k, j) {
+  const tw = Q.tanzilWords[k] || [], m = ayahEnd(k) - ayahStart(k), n = tw.length;
+  const out = [];
+  if (n === m) { if (tw[j] != null) out.push([`t${k}_${j}`, tw[j]]); return out; }
+  for (let i = 0; i < n; i++) if ((n > 1 ? Math.round(i * (m - 1) / (n - 1)) : m - 1) === j) out.push([`t${k}_${i}`, tw[i]]);
+  return out;
+}
+// "ސޫރަތުލް ބަޤަރާ (2) • ފޮތް 1 • އާޔަތް 6 – 16" style information about a question
+export function portion(q) {
+  if (!q) return null;
+  const s = Q.hafs.surahs[q.surah - 1] || {};
+  return { surahNo: q.surah, surahAr: s.ar || q.surahName, juz: q.juz, page: q.page, from: q.ayahFrom, to: q.ayahTo, lineFrom: q.lineFrom, lineTo: q.lineTo };
+}
 export function renderPage(p, opts = {}) {
   const H = Q.hafs, layout = Q.pageLayout[p] || [];
   const [ws, we] = opts.range || [-1, -1];
   const marks = opts.marks || {};
-  let html = `<div class="mushaf-page ${p <= 2 ? "p12" : ""}" data-page="${p}">`;
+  const tz = opts.source === "tanzil" && !!Q.tanzilWords;
+  let html = `<div class="mushaf-page ${p <= 2 ? "p12" : ""}${tz ? " tz" : ""}" data-page="${p}">`;
   for (const row of layout) {
     if (row.t === "h") { html += `<div class="sura-head"><span>سُورَةُ ${esc(surahName(row.s))}</span></div>`; continue; }
     if (row.t === "b") { html += `<div class="qline basmala">${BASMALA}</div>`; continue; }
@@ -193,9 +211,18 @@ export function renderPage(p, opts = {}) {
       const inR = w >= ws && w < we;
       const cls = ["w"];
       if (inR) cls.push("in"); else if (opts.range) cls.push("out");
+      if (tz) {
+        // the Tanzil word(s) that sit at this mushaf position
+        const k = ayahOfWord(w), toks = tanzilAt(k, w - ayahStart(k));
+        toks.forEach(([id, t], ti) => {
+          const c2 = marks[id] ? [...cls, "err-" + marks[id]] : cls;
+          line += `<span class="${c2.join(" ")}" data-w="${id}">${(opts.hideOutside && !inR) ? "" : t}</span>` + (ti < toks.length - 1 ? " " : "");
+        });
+      } else {
       if (marks[w]) cls.push("err-" + marks[w]);
       const txt = (opts.hideOutside && !inR) ? "" : H.words[w];
       line += `<span class="${cls.join(" ")}" data-w="${w}">${txt}</span>`;
+      }
       const k = ayahOfWord(w);
       if (ayahEnd(k) === w + 1) line += `<span class="${inR ? "in" : (opts.range ? "out" : "")}">${ayahMarkHTML(ayahNo(k))}</span>`;
       line += " ";

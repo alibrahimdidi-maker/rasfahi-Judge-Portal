@@ -85,6 +85,20 @@ export const KHAFI_GROUPS = [
   ]}
 ];
 
+// ޙަރަކާތް — إتمام الحركة ފަދަ ކުށް
+KHAFI_GROUPS.push({ key: "haraka", ar: "الحركات", dv: "ޙަރަކާތް", crit: "tajweed", ded: 0.5, items: [
+  ["itmam", "إتمام الحركة", "ޙަރަކާތް ފުރިހަމަ ނުކުރުން (އިތްމާމުލް ޙަރަކާ)"],
+  ["ikhtilas", "اختلاس الحركة", "ޙަރަކާތް ވަގަށް / ކުރުކޮށް ނެގުން"],
+  ["mat", "مطّ الحركة (إشباع)", "ޙަރަކާތް ދިގުކުރުން"],
+  ["tahrik_sakin", "تحريك الساكن", "ސުކޫނުގައި ޙަރަކާތް ލުން"],
+  ["dhamma", "تحقيق الضمة", "ޟައްމާ ފުރިހަމަނުކުރުން"],
+  ["kasra", "تحقيق الكسرة", "ކަސްރާ ފުރިހަމަނުކުރުން"],
+  ["fatha", "تحقيق الفتحة", "ފަތްޙާ ފުރިހަމަނުކުރުން"]
+]});
+// the most common hidden mistakes first in the pop-up: މައްދު، ވަޤްފު، ޙަރަކާތް، ޣުންނާ
+{ const FIRST = ["madd", "waqf", "haraka", "ghunna"]; const r = (g) => { const i = FIRST.indexOf(g.key); return i < 0 ? 99 : i; };
+  KHAFI_GROUPS.sort((a, b) => r(a) - r(b)); }
+
 export function khafiInfo(groupKey, itemKey) {
   const g = KHAFI_GROUPS.find(x => x.key === groupKey);
   if (!g) return null;
