@@ -14,7 +14,7 @@ export const firebaseConfig = {
 
 // ފުރަތަމަ ސުޕަރ އެޑްމިންގެ ގޫގުލް އީމެއިލް — ކުޑަ އަކުރުން
 // (firestore.rules ގެ bootstrapEmail() ގައިވެސް ހަމަ މި އީމެއިލް ލިޔުއްވާ)
-export const BOOTSTRAP_SUPERADMIN = "YOUR_SUPER_ADMIN_EMAIL@gmail.com";
+export const BOOTSTRAP_SUPERADMIN = "alibrahimdidi@gmail.com";
 
 // ރެޖިސްޓްރޭޝަން ފޯމުގެ ލިންކް (އީމެއިލްތަކުގައި ފޮނުވާ ލިންކް). GitHub Pages ލިންކް ލިޔުއްވާ. ފަހަތުގައި / ހުންނަންވާނެ.
-export const PUBLIC_BASE_URL = "https://YOUR_GITHUB_USERNAME.github.io/rasfahi/";
+export const PUBLIC_BASE_URL = "https://alibrahimdidi-maker.github.io/rasfahi-Judge-Portal/";
