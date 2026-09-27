@@ -250,6 +250,7 @@ export async function students(view) {
   const box = h("div", spinner());
   card.append(h("div.filters", fTxt, fCat, fGen, fInst, fSes, fCk,
     canEdit() ? h("button.btn.primary", { onclick: () => edit() }, "+ ދަރިވަރެއް") : null,
+    canEdit() ? h("button.btn.orange", { onclick: () => importCSV() }, "📥 CSV ތެރެ ކިޔެވުން") : null,
     h("button.btn", { onclick: () => exportCSV() }, "⬇ CSV"), h("button.btn", { onclick: () => printList() }, "🖨 ލިސްޓް"),
     h("button.btn", { onclick: () => printDoc("ދަރިވަރު ކާޑު", admitCardsHTML(filtered(), Object.fromEntries(sessions.map(s => [s.id, s])))) }, "🪪 ކާޑު")), box);
   view.appendChild(card);
@@ -343,6 +344,98 @@ export async function students(view) {
         audit(s0 ? "student_update" : "student_create", { id }); return true;
       } }], { wide: true });
     if (ok) { toast("ސޭވް ކުރެވިއްޖެ"); load(); }
+  }
+  // ---------------------------------------------------------------- CSV IMPORT
+  async function importCSV() {
+    const TPL_COLS = ["nid","name","nameEn","dob","gender","permAddress","island","currentAddress","phone","email","categoryId","institution","instType","guardianName","guardianPhone"];
+    const input = h("input", { type: "file", accept: ".csv,text/csv", style: { display: "none" } });
+    const preview = h("div", { style: { marginTop: "10px", maxHeight: "320px", overflowY: "auto" } });
+    const errBox = h("div");
+    let parsed = [];
+    const catMap = Object.fromEntries(cats.map(c => [c.id, c]));
+    const catByName = Object.fromEntries(cats.map(c => [c.name.trim().toLowerCase(), c]));
+    function parseFile(file) {
+      const r = new FileReader();
+      r.onload = e => {
+        const lines = e.target.result.split(/\r?\n/).filter(l => l.trim());
+        if (!lines.length) return;
+        const hdr = lines[0].split(",").map(h2 => h2.trim().replace(/^"|"$/g,"").toLowerCase());
+        const rows = lines.slice(1).map(line => {
+          const vals = []; let cur = "", inq = false;
+          for (const ch of line) { if (ch==='"') { inq=!inq; } else if (ch===","&&!inq) { vals.push(cur.trim()); cur=""; } else cur+=ch; }
+          vals.push(cur.trim());
+          const obj = {};
+          hdr.forEach((k,i) => { obj[k] = (vals[i]||"").replace(/^"|"$/g,""); });
+          return obj;
+        }).filter(r2 => r2.nid || r2["id"] || r2["national id"]);
+        // normalise key aliases
+        parsed = rows.map(r2 => {
+          const nid2 = normId(r2.nid || r2["id"] || r2["national id"] || r2["id no"] || "");
+          const name2 = r2.name || r2["full name"] || r2["ދިވެހި ނަން"] || "";
+          const cid2 = (catByName[(r2.categoryid||r2.category||r2["ބައި"]||"").toLowerCase()] || {}).id || r2.categoryid || "";
+          return { nid: nid2, name: name2, nameEn: r2.nameen||r2["name en"]||r2["english name"]||"", dob: r2.dob||r2["date of birth"]||"",
+            gender: (r2.gender||r2["ޖިންސް"]||"M").trim().toUpperCase().startsWith("F")?"F":"M",
+            permAddress: r2.permaddress||r2["permanent address"]||r2["ދާއިމީ"]||"",
+            island: r2.island||r2["ރަށް"]||"", currentAddress: r2.currentaddress||r2["current address"]||"",
+            phone: r2.phone||r2["mobile"]||r2["ފޯނު"]||"", email: r2.email||r2["Email Address"]||"",
+            categoryId: cid2, institution: r2.institution||r2["school"]||r2["ސްކޫލް"]||"",
+            instType: r2.insttype||r2["institution type"]||"", guardianName: r2.guardianname||r2["guardian"]||"",
+            guardianPhone: r2.guardianphone||r2["guardian phone"]||"" };
+        });
+        errBox.innerHTML = "";
+        preview.innerHTML = "";
+        const tbl = h("table.tbl");
+        const thead = h("thead", h("tr", ["#","ID","ނަން","DOB","ޖިންސް","ބައި","ފޯނު","Status"].map(x=>h("th",x))));
+        const tbody = h("tbody");
+        parsed.forEach((r2, i) => {
+          const cat2 = catMap[r2.categoryId];
+          const issues = [!r2.nid&&"ID ނެތް", !r2.name&&"ނަން ނެތް", !cat2&&"ބައި ދިމާނުވި"].filter(Boolean);
+          tbody.appendChild(h("tr", { style: { color: issues.length?"#ffa0a0":"" } },
+            h("td",i+1), h("td",r2.nid), h("td",r2.name), h("td",r2.dob), h("td",r2.gender==="F"?"A":"F"),
+            h("td", cat2?cat2.name:(r2.categoryId||"-")), h("td",r2.phone),
+            h("td", issues.length?h("span.tag.red",issues.join(", ")):h("span.tag.green","✔"))));
+        });
+        tbl.append(thead, tbody);
+        preview.appendChild(h("p.small.muted", `${parsed.length} ލައިން ކިޔެވިއްޖެ • ކުރިއަށް ދިޔުމުން ރަޖިސްޓަރީ ނަންބަރ ދޭ ދަރިވަރުންތައް ${S.settings.activeCompetitionId} ގެ ތެރެ ވައްދޭ.`));
+        preview.appendChild(tbl);
+      };
+      r.readAsText(file, "UTF-8");
+    }
+    input.onchange = e => { if (e.target.files[0]) parseFile(e.target.files[0]); };
+    const ok = await modal("📥 CSV ތެރެ ދަރިވަރުން ވެއްދުން",
+      h("div",
+        h("p.small.muted", "ކޮލަމްތައް (ތަރުތީބު ދޫ): nid, name, nameEn, dob, gender (M/F), permAddress, island, currentAddress, phone, email, categoryId, institution, instType, guardianName, guardianPhone"),
+        h("div.row", h("button.btn.primary", { onclick: () => input.click() }, "📂 ފައިލް ހޮވާ"),
+          h("button.btn.sm", { onclick: () => {
+            const url = "data:text/csv;charset=utf-8,%EF%BB%BFnid,name,nameEn,dob,gender,permAddress,island,currentAddress,phone,email,categoryId,institution,instType,guardianName,guardianPhone\nA123456,ﭔَﺎﻟِﺢَ ﻣُﺤَﻤَّﺪُ,Salih Mohamed,2008-05-14,M,ﻣَﺎﻟِﻴ,Male,ﻣَﺎﻟِﻴ,7777001,s@mail.mv,," + (cats[0]?cats[0].name:"") + ",ﻣُﺪَﺭَّﺳَﺔ,School,ﻭَﻟِﻲّ ﺍﻷَﻣْﺮ,7777000";
+            const a = document.createElement("a"); a.href=url; a.download="students_template.csv"; a.click();
+          } }, "⬇ ޓެމްޕްލޭޓް ކޮޕީ")),
+        input, errBox, preview),
+      [{ label: "ކެންސަލް" }, { label: "ވައްދާ", cls: "primary", onClick: async () => {
+        if (!parsed.length) { toast("ދަރިވަރެއް ނެތް", "warn"); return false; }
+        const cid = S.settings.activeCompetitionId;
+        let ok2 = 0, skip = 0;
+        for (const r2 of parsed) {
+          if (!r2.nid || !r2.name) { skip++; continue; }
+          const id = `${cid}__${r2.nid}`;
+          const ex = await getDoc(doc(db, "students", id));
+          if (ex.exists()) { skip++; continue; }
+          const cat2 = catMap[r2.categoryId] || cats[0];
+          const regNo = await runTransaction(db, async (tx) => {
+            const cRef = doc(db, "competitions", cid); const c = await tx.get(cRef);
+            const n = ((c.exists() && c.data().regCounter) || 0) + 1; tx.set(cRef, { regCounter: n }, { merge: true });
+            return `R${String((c.exists() && c.data().year) || new Date().getFullYear()).slice(-2)}-${String(n).padStart(4,"0")}`;
+          });
+          await setDoc(doc(db, "students", id), { competitionId: cid, regNo, nid: r2.nid, name: r2.name, nameEn: r2.nameEn, dob: r2.dob, gender: r2.gender,
+            permAddress: r2.permAddress, island: r2.island, currentAddress: r2.currentAddress, phone: r2.phone, email: r2.email,
+            categoryId: cat2?cat2.id:"", categoryName: cat2?cat2.name:"", branch: cat2?cat2.branch:"", ageGroup: cat2?cat2.ageGroup:"",
+            institution: r2.institution, instType: r2.instType, guardianName: r2.guardianName, photoThumb: "",
+            status: "active", sessionId: "", order: 0, checkin: null, createdAt: serverTimestamp() });
+          ok2++;
+        }
+        toast(`✔ ${ok2} ދަރިވަރުން ވެއްދިއްޖެ${skip?" • "+skip+" ދޫކޮށްލި":""}`); return true;
+      } }], { wide: true });
+    if (ok) load();
   }
   load();
 }
