@@ -7,6 +7,7 @@ import {
   DEFAULT_RUBRIC, DEFAULT_SETTINGS, AGE_GROUPS, GENDERS, BRANCHES, loadCategories, loadSettings, cache
 } from "../core.js";
 import { loadQuran, surahOptions, describeSyllabus, buildCandidates, pageImageURL, pageSlotCount, slotBand } from "../quran.js";
+import { THEMES, FRAMES, frameEl } from "../frames.js";
 
 // ------------------------------------------------------------ USERS
 export async function users(view) {
@@ -94,6 +95,24 @@ export async function settings(view) {
   const cal = {};
   ["top", "bottom", "left", "right", "p12top", "p12bottom"].forEach(k => cal[k] = h("input", { type: "number", step: "0.1", value: m[k] }));
 
+  // ---- colour theme & royal Quran frame ----
+  let themeVal = st.theme || DEFAULT_SETTINGS.theme;
+  let frameVal = st.qframe == null ? DEFAULT_SETTINGS.qframe : +st.qframe;
+  const themeBox = h("div.theme-swatches");
+  const drawThemes = () => {
+    themeBox.innerHTML = "";
+    THEMES.forEach(t => themeBox.appendChild(h("button.theme-sw" + (t.key === themeVal ? ".sel" : ""), { type: "button",
+      onclick: () => { themeVal = t.key; document.documentElement.dataset.theme = t.key; drawThemes(); } },
+      h("span.chips", t.sw.map(c => h("b", { style: { background: c } }))), t.dv)));
+  };
+  drawThemes();
+  const sample = () => h("div.qf-sample", { html: "ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِينَ<br>ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ" });
+  const gal = h("div.qf-gallery");
+  [{ id: 0, dv: "ބޯޑަރު ނެތް" }, ...FRAMES].forEach(f => gal.appendChild(h("button.qf-opt" + (f.id === frameVal ? ".sel" : ""), { type: "button", "data-id": f.id,
+    onclick: () => { frameVal = f.id; gal.querySelectorAll(".qf-opt").forEach(x => x.classList.toggle("sel", +x.dataset.id === f.id)); } },
+    f.id ? frameEl(f.id, sample()) : h("div.qf-none", h("div", { style: { background: "#fffdf5", borderRadius: "6px" } }, sample())),
+    h("div.qf-label", f.id ? `${f.id}. ${f.dv}` : f.dv))));
+
   view.append(
     h("div.card", h("h2", "އާންމު ސެޓިންގްސް"),
       h("div.grid3",
@@ -106,6 +125,11 @@ export async function settings(view) {
         field("ފައިނަލް މާކްސް ހިސާބުކުރާ ގޮތް", methSel)),
       h("h3", "ތަރި (ސްޓާރ) ދޭ މިންގަނޑު — މާކްސް މި އަދަދު ނުވަތަ މަތި"),
       h("div.grid4", stars.slice(0, 4).map((s, i) => field(`${i + 1} ތަރި`, s))), field("5 ތަރި (ވަރަށް ފުރިހަމަ)", stars[4])),
+    h("div.card", h("h2", "ކުލައާއި ބޯޑަރު"),
+      h("h3", "ސިސްޓަމުގެ ކުލަ"),
+      h("p.small.muted", "ފިތާލުމުން މި ސްކްރީނުގައި ކުލަ ބަދަލުވާނެ. އެހެން ސްކްރީންތަކަށް ފެތޭނީ ސޭވް ކުރުމުން."), themeBox,
+      h("h3", { style: { marginTop: "20px" } }, "ދަރިވަރު ސްކްރީނުގެ ޤުރްއާން ބޯޑަރު"),
+      h("p.small.muted", "ޤުރްއާން ޓެކްސްޓް، PNG ޞަފުޙާ އަދި ނުބަލައި ކިޔެވުމުގެ ފެށުން ދައްކާ ތަނަށް މި ބޯޑަރު އަރާނެ."), gal),
     h("div.card", h("h2", "މުޞްޙަފުގެ PNG ޞަފުޙާތައް ", h("small", "— GitHub ރިޕޮގެ mushaf/ ފޯލްޑަރުގައި 001.png ... 604.png")),
       h("div.grid2", field("ފޯލްޑަރު / URL", mBase, "މިސާލު: mushaf/ ނުވަތަ https://.../"), field("ފައިލް ނަމުގެ ގޮތް", mPat, "{p3} = 001، {p} = 1، {p4} = 0001")),
       h("p.small.muted", "ދަރިވަރު ސްކްރީނުގައި ކިޔަވަންވީ ފޮޅުވަތްތަކުގެ ކައިރީގައި ރަތް ރޮނގެއް އަޅާނީ މި މިންތަކަށް ބަލައިގެން (% އިން). ކެލިބްރޭޓް ކުރައްވާ:"),
@@ -121,7 +145,8 @@ export async function settings(view) {
       scoring: { ...st.scoring, method: methSel.value },
       mushaf: { base: mBase.value.trim(), pattern: mPat.value.trim() || "{p3}.png",
         ...Object.fromEntries(Object.entries(cal).map(([k, v]) => [k, +v.value])) },
-      liveControllers: st.liveControllers || DEFAULT_SETTINGS.liveControllers
+      liveControllers: st.liveControllers || DEFAULT_SETTINGS.liveControllers,
+      theme: themeVal, qframe: frameVal
     };
   }
   async function save() {
