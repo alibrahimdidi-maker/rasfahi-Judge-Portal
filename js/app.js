@@ -74,17 +74,43 @@ const root = $("#app");
 
 function loginView(msg) {
   root.innerHTML = "";
-  root.appendChild(h("div.login", h("div.login-card",
-    h("div.bismillah", "بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ"),
-    h("div.brand", "RASFAHI"),
-    h("div.brand-sub", "ޤުރްއާން މުބާރާތުގެ ޖަޖިންގ ސިސްޓަމް"),
-    msg ? h("p", { style: { color: "#ff8a80" } }, msg) : null,
-    h("button.gbtn", { onclick: async () => {
-      try { await loginGoogle(); } catch (e) { toast("ލޮގިން ނުވި: " + (e.code || e.message), "err"); }
-    } }, h("img", { src: "https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg", alt: "" }), "ގޫގުލް އިން ލޮގިން ވުމަށް"),
-    h("div.login-note", "ލޮގިން ވެވޭނީ ސުޕަރ އެޑްމިން ރަޖިސްޓަރީ ކޮށްފައިވާ އީމެއިލް އިން އެކަނި.", h("br"),
-      "Intellectual property of Ali Ibrahim Didi • Qur'an text: KFGQPC & Tanzil.net"),
-    h("div.login-note", h("a", { href: "register.html" }, "📝 މުބާރާތަށް ބައިވެރިވުމުގެ ފޯމު")))));
+  // try to read comp name from localStorage (set after a successful login)
+  let orgName = ""; try { orgName = localStorage.getItem("rasfahiOrg") || ""; } catch(e){}
+  root.appendChild(h("div.login",
+    h("div.login-card",
+      // top brand block
+      h("div.bismillah", "بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ"),
+      orgName ? h("div.login-org", orgName) : null,
+      h("div.brand", "RASFAHI"),
+      h("div.brand-sub", "ޤުރްއާން މުބާރާތުގެ ޖަޖިންގ ސިސްޓަމް"),
+      h("div.login-divider"),
+      // auth error
+      msg ? h("p.login-err", msg) : null,
+      // google button
+      h("button.gbtn", { onclick: async () => {
+        try { await loginGoogle(); } catch (e) { toast("ލޮގިން ނުވި: " + (e.code || e.message), "err"); }
+      } }, h("img", { src: "https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg", alt: "" }),
+        "ގޫގުލް ގެ ތެރެ ލޮގިން ވުމަށް"),
+      // authorized-only note
+      h("p.login-auth-note", "ހުއްދަ ދީފައިވާ ފަރާތްތަކަށް އެކަނި"),
+      // registration form link — big button
+      h("a.login-reg-btn", { href: "register.html" },
+        h("span.login-reg-icon", "📝"),
+        h("span", h("b", "ބައިވެރިވުމުގެ ފޯމު"),
+          h("span.login-reg-sub", "ﻣُﺒَﺎﺭَﺍﺓ ﻓِﻲ ﺗِﻼَﻭَﺓِ ﺍﻟْﻘُﺮْﺁﻥِ ﺍﻟْﻜَﺮِﻳﻢِ"))),
+      // footer
+      h("p.login-note", "Intellectual property of Ali Ibrahim Didi",
+        h("br"), "Qur'an: KFGQPC & Tanzil.net")
+    ),
+    // footer card
+    h("div.login-footer-card",
+      h("p.login-footer-label", "ﺑَﺮَﻧَﺎﻣَﺞٌ ﻣِﻦْ ﺗَﻄْﻮِﻳﺮِ"),
+      h("div.login-footer-brand", "RASFAHI"),
+      h("p.login-footer-copy", "Ali Ibrahim Didi • +960 7791550",
+        h("br"), "Copyright © RASFAHI · Reg No: MED.03.IP.CR.26.EW5889",
+        h("br"), h("span.login-footer-note", "All rights reserved. Unauthorised use is prohibited."))
+    )
+  ));
 }
 
 function noAccess(email, why) {
@@ -113,6 +139,7 @@ async function boot(user) {
   if (!S.me.active) return noAccess(email, "މި އެކައުންޓް ޑިސޭބަލް ކޮށްފައި");
   await loadSettings();
   audit("login", { role: S.me.role });
+  try { localStorage.setItem("rasfahiOrg", S.settings.activeCompetitionId ? (S.comp && S.comp.organizer ? S.comp.organizer + " — " : "") + "ﻗُﺮْآﻥِ ﻛَﺮِﻳﻢْ" : "ﻗُﺮْآﻥِ ﻛَﺮِﻳﻢْ"); } catch(e){}
   shell();
 }
 
