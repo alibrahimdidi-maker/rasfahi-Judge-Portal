@@ -11,6 +11,7 @@ import {
   onSnapshot, serverTimestamp, runTransaction, writeBatch, arrayUnion, arrayRemove, increment, Timestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig, BOOTSTRAP_SUPERADMIN, PUBLIC_BASE_URL } from "./firebase-config.js";
+import { applyTheme, DEFAULT_THEME } from "./frames.js";
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
@@ -74,7 +75,9 @@ export const DEFAULT_SETTINGS = {
   studentDisplay: "text",        // text | image
   mushaf: { base: "mushaf/", pattern: "{p3}.png", top: 7.2, bottom: 6.2, left: 7, right: 7, p12top: 38, p12bottom: 30 },
   scoring: { method: "mean", decimals: 2 },
-  liveControllers: ["chief", "secretary"]
+  liveControllers: ["chief", "secretary"],
+  theme: DEFAULT_THEME,           // app colour theme (js/frames.js THEMES)
+  qframe: 1                       // royal frame around the Quran on the student screen (0 = none, 1–50)
 };
 
 // ---------------- SESSION STATE ----------------
@@ -98,6 +101,7 @@ export async function loadSettings() {
         scoring: { ...DEFAULT_SETTINGS.scoring, ...(d.scoring || {}) } };
     }
   } catch (e) { console.warn("settings", e); }
+  applyTheme(S.settings.theme);
   return S.settings;
 }
 
