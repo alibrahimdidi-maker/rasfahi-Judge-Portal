@@ -4,7 +4,7 @@
 // ============================================================
 import { S, db, doc, getDocs, collection, query, where, onSnapshot, h, toast, select, spinner, empty, sub, fmt2, starsHtml,
   loadCategories, loadSessions, catById, sessionLabel, downloadCSV, GENDERS, genderName } from "../core.js";
-import { printDoc, resultsHTML, fullReportHTML, scoreSheetHTML } from "../print.js";
+import { printDoc, resultsHTML, fullReportHTML, scoreSheetHTML, ceremonyHTML } from "../print.js";
 
 const isAdmin = () => ["superadmin", "adminsec"].includes(S.me.role);
 
@@ -62,15 +62,16 @@ export async function results(view) {
   const fCat = select([["", "ހުރިހާ ބައެއް"], ...cats.map(c => [c.id, c.name])], "");
   const fSes = select([["", "ހުރިހާ ސެޝަނެއް"], ...sessions.map(s => [s.id, sessionLabel(s)])], "");
   const fGen = select([["", "ދެ ޖިންސު"], ...GENDERS], "");
-  const fTop = select([["", "ހުރިހާ"], ["3", "އެންމެ މޮޅު 3"], ["5", "އެންމެ މޮޅު 5"], ["10", "އެންމެ މޮޅު 10"]], "");
+  const fTop = select([["", "ހުރިހާ"], ["1", "1 ވަނަ (ބިއްލޫރި)"], ["3", "ގަދަ 3"], ["5", "ގަދަ 5"], ["10", "ގަދަ 10"], ["20", "ގަދަ 20"]], "");
   const fStar = select([["", "ހުރިހާ ތަރި"], ["1", "1+ ތަރި"], ["3", "3+ ތަރި"], ["5", "5 ތަރި"]], "");
   const sigN = select([["3", "3 ސޮއި"], ["5", "5 ސޮއި"], ["7", "7 ސޮއި"]], "3");
   const box = h("div");
   card.append(h("div.filters", fCat, fSes, fGen, fStar, fTop, sigN,
     h("button.btn", { onclick: () => printRanked() }, "🖨 ނަތީޖާ"),
+    h("button.btn.primary", { onclick: () => printCeremony() }, "🏅 ﺟَﻠْﺴَﺔُ ﺍﻟْﺨِﺘَﺎﻡ ﭘْﺮِﻳﻨْﺖ"),
     h("button.btn", { onclick: () => exportCSV() }, "⬇ CSV"),
-    isAdmin() ? h("button.btn", { onclick: () => printFull() }, "📑 ފުރިހަމަ ރުބްރިކް ރިޕޯޓް") : null,
-    isAdmin() ? h("button.btn", { onclick: () => printJudgeSheets() }, "🗂 ޖަޖު ޝީޓްތައް") : null), box);
+    isAdmin() ? h("button.btn", { onclick: () => printFull() }, "📑 ﺭُﺑّْﺮِﻳﻚ ﺭِﭘُﻮﺭْﺕ") : null,
+    isAdmin() ? h("button.btn", { onclick: () => printJudgeSheets() }, "🗂 ﺟَﺎﺝ ﺷِﻴﺖ") : null), box);
   // rank within category
   const ranked = () => {
     const f = rows.filter(r => (!fCat.value || r.categoryId === fCat.value) && (!fSes.value || r.sessionId === fSes.value) &&
@@ -93,12 +94,20 @@ export async function results(view) {
     let lastCat = null;
     const tb = h("tbody");
     list.forEach(r => {
-      if (r.categoryId !== lastCat) { lastCat = r.categoryId; tb.appendChild(h("tr", h("td", { colspan: 9, style: { background: "#132433", color: "#ffd76a", fontWeight: 700 } }, r.categoryName))); }
-      tb.appendChild(h("tr", h("td", h("b", r.rank)), h("td", r.photoThumb ? h("img.ph", { src: r.photoThumb }) : ""), h("td", r.name), h("td", r.regNo), h("td.ltr", r.nid),
-        h("td.small", r.sessionName + " " + (r.sessionDate || "")), h("td.small", (r.judges || []).map(j => fmt2(j.total)).join(" | ")),
-        h("td", h("b", { style: { color: "#00e676", fontSize: "16px" } }, fmt2(r.final))), h("td", { html: starsHtml(r.stars) })));
+      if (r.categoryId !== lastCat) { lastCat = r.categoryId; tb.appendChild(h("tr", h("td", { colspan: 10, style: { background: "var(--th)", color: "var(--gold2)", fontWeight: 700, padding: "8px" } }, r.categoryName))); }
+      const rankBg = r.rank===1?"rgba(212,175,55,.18)":r.rank===2?"rgba(180,180,180,.10)":r.rank===3?"rgba(200,140,80,.12)":"";
+      tb.appendChild(h("tr", { style: { background: rankBg } },
+        h("td", h("b", { style: { fontSize: r.rank<=3?"18px":"" } }, r.rank<=3?"🥇🥈🥉"[r.rank-1]+" "+r.rank:String(r.rank))),
+        h("td", r.photoThumb ? h("img.ph", { src: r.photoThumb }) : ""),
+        h("td", h("b", r.name), h("div.small.muted", r.ageGroup||"")),
+        h("td", r.regNo), h("td.ltr", r.nid),
+        h("td.small", r.sessionName + " " + (r.sessionDate || "")),
+        h("td.small", (r.judges || []).map(j => fmt2(j.total)).join(" | ")),
+        h("td", h("b", { style: { color: "var(--green2)", fontSize: "16px" } }, fmt2(r.final))),
+        h("td", { html: starsHtml(r.stars) }),
+        h("td", r.institution ? h("div.small.muted", r.institution) : "")));
     });
-    box.appendChild(h("div.tbl-wrap", h("table.tbl", h("thead", h("tr", ["ޤަދަރު", "", "ނަން", "ރެޖި", "އައިޑީ", "ސެޝަން", "ޖަޖުން", "ފައިނަލް", "ތަރި"].map(x => h("th", x)))), tb)));
+    box.appendChild(h("div.tbl-wrap", h("table.tbl", h("thead", h("tr", ["ﻭَﻧَﺎ", "", "ﻧَﻢ", "ﺭَﺟِﻲ", "ID", "ﺳِﻴﺴَﻦ", "ﺟَﺎﺝ", "ﻓَﺎﻳِﻨَﻞ", "★", "ﻣُﻌَﺎﺳَّﺴَﺎ"].map(x => h("th", x)))), tb)));
   }
   [fCat, fSes, fGen, fTop, fStar].forEach(x => x.onchange = draw);
   const sub2 = () => [fCat.value && (catById(fCat.value) || {}).name, fSes.value && sessionLabel(sessions.find(s => s.id === fSes.value)), fGen.value && genderName(fGen.value)].filter(Boolean).join(" • ");
@@ -128,6 +137,16 @@ export async function results(view) {
     const keys = new Set(list.map(r => r.sessionId + "|" + r.studentId));
     const sel = sc.filter(s => keys.has(s.sessionId + "|" + s.studentId)).sort((a, b) => String(a.studentName).localeCompare(b.studentName) || a.judgeSlot - b.judgeSlot);
     printDoc("ޖަޖުންގެ މާކްސް ޝީޓް", sel.map(s => scoreSheetHTML(s, catById(s.categoryId))).join(""));
+  }
+  async function printCeremony() {
+    const list = ranked(); if (!list.length) return toast("ﻧَﺘَﺎﺋِﺞ ﻧœﺖ", "warn");
+    const snap = await import("../core.js").then(m => m.getDoc(m.doc(m.db, "competitions", S.settings.activeCompetitionId || "-"))).catch(()=>null);
+    const comp = snap && snap.exists() ? { id: snap.id, ...snap.data() } : { name: "ﻗُﺮْآﻥِ ﻛَﺮِﻳﻢ ﻣُﺒَﺎﺭَﺍﺓ" };
+    const byCat = {};
+    list.forEach(r => (byCat[r.categoryId] = byCat[r.categoryId] || []).push(r));
+    const topN = fTop.value ? +fTop.value : 0;
+    const html = Object.entries(byCat).map(([, l]) => `<div class="page">${ceremonyHTML(l, comp, topN)}</div>`).join("");
+    printDoc("ﺟَﻠْﺴَﺔُ ﺍﻟْﺨِﺘَﺎﻡ", html, { sub: sub2(), landscape: true });
   }
   draw();
 }

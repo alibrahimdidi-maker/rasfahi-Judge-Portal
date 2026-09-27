@@ -7,7 +7,7 @@ import {
   fmtDate, fmtDateTime, AGE_GROUPS, GENDERS, INST_TYPES, BRANCHES, ageGroupName, genderName, instTypeName, normId, digits,
   loadCategories, loadSessions, catById, cache, photoTag, resizeImage, ageOn, downloadCSV, PUBLIC_BASE_URL, sessionLabel, todayISO
 } from "../core.js";
-import { printDoc, tableHTML, admitCardsHTML, blankSheetsHTML, sigBlock } from "../print.js";
+import { printDoc, tableHTML, admitCardsHTML, blankSheetsHTML, sigBlock, a5JudgeSheetHTML, noticeBoardHTML, sessionJudgeTableHTML } from "../print.js";
 
 const canEdit = () => ["superadmin", "adminsec"].includes(S.me.role);
 const needComp = (view) => {
@@ -521,30 +521,40 @@ export async function prints(view) {
   view.append(h("div.card", h("h2", "ލިސްޓާއި ޕްރިންޓް — ފިލްޓަރ ކޮށްގެން"),
     h("div.filters", fSes, fCat, fGen, fInst, fCk, sigN),
     h("div.grid3",
-      btn("📋 ސެޝަން ލިސްޓު", rows => printDoc("ސެޝަން ލިސްޓު", tableHTML([{ t: "#", cls: "num", v: (r, i) => r.order || i + 1 },
-        { t: "ފޮޓޯ", cls: "num", html: r => r.photoThumb ? `<img class="ph" src="${r.photoThumb}">` : "" }, { t: "ނަން", v: r => r.name }, { t: "ރެޖި", v: r => r.regNo },
-        { t: "އައިޑީ", v: r => r.nid }, { t: "ބައި", v: r => r.categoryName }, { t: "މުއައްސަސާ", v: r => r.institution }], rows), { sub: sub() })),
-      btn("✍ ޙާޟިރީ ޝީޓް", rows => printDoc("ޙާޟިރީ ޝީޓް", tableHTML([{ t: "#", cls: "num", v: (r, i) => r.order || i + 1 },
-        { t: "ފޮޓޯ", cls: "num", html: r => r.photoThumb ? `<img class="ph" src="${r.photoThumb}">` : "" }, { t: "ނަން", v: r => r.name }, { t: "އައިޑީ", v: r => r.nid },
-        { t: "ރެޖި", v: r => r.regNo }, { t: "ފޯނު", v: r => r.phone }, { t: "ޙާޟިރު", v: () => "" }, { t: "ސޮއި", html: () => "<div style='width:90px;height:22px'></div>" }], rows)
-        + sigBlock(["ސެކްރެޓަރީ", "ސުޕަވައިޒަރ"]), { sub: sub() })),
-      btn("📌 ނޯޓިސް ބޯޑު ލިސްޓު", rows => printDoc("ނޯޓިސް ބޯޑު", tableHTML([{ t: "#", cls: "num", v: (r, i) => r.order || i + 1 }, { t: "ނަން", v: r => r.name },
-        { t: "ރެޖި", v: r => r.regNo }, { t: "ބައި", v: r => r.categoryName }, { t: "ސެޝަން", v: r => { const s = sesById[r.sessionId]; return s ? `${s.name} ${s.date} ${s.time || ""}` : "-"; } },
-        { t: "ތަން", v: r => (sesById[r.sessionId] || {}).venue || "" }], rows), { sub: sub() })),
-      btn("🪪 ދަރިވަރު ކާޑު", rows => printDoc("ދަރިވަރު ކާޑު", admitCardsHTML(rows, sesById))),
-      btn("📝 ހުސް ޖަޖު ޝީޓް", rows => {
-        const s = sesById[fSes.value]; const byCat = {};
-        rows.forEach(r => (byCat[r.categoryId] = byCat[r.categoryId] || []).push(r));
-        const judges = s ? s.judges : [{ slot: "" }];
-        printDoc("ޖަޖުގެ މާކްސް ޝީޓް", judges.map(j => Object.entries(byCat).map(([cid, list]) => blankSheetsHTML(list, catById(cid), s, j.slot)).join("")).join(""));
+      btn("📋 ސެޝަން ލިސްޓު", rows => printDoc("ސެޝަން ލިސްޓު", tableHTML([
+        { t: "#", cls: "num", v: (r, i) => r.order || i + 1 },
+        { t: "ފޮޓޯ", cls: "num", html: r => r.photoThumb ? `<img class="ph" src="${r.photoThumb}">` : "" },
+        { t: "ނަން", v: r => r.name }, { t: "ރެޖި", v: r => r.regNo }, { t: "ID", v: r => r.nid },
+        { t: "ﻋُﻤُﺮ", v: r => r.ageGroup || "" }, { t: "ﺑَﺎﺉ / ﮔﻮﻓِﻲ", v: r => r.categoryName }, { t: "ﻣُﻌَﺎﺳَّﺴَﺎ", v: r => r.institution }], rows), { sub: sub(), landscape: true })),
+      btn("✍ ﺣُﻀُﻮﺭِﻱ ﺷِﻴﺖ", rows => printDoc("ﺣُﻀُﻮﺭِﻱ ﺷِﻴﺖ", tableHTML([
+        { t: "#", cls: "num", v: (r, i) => r.order || i + 1 },
+        { t: "ފޮޓޯ", cls: "num", html: r => r.photoThumb ? `<img class="ph" src="${r.photoThumb}">` : "" },
+        { t: "ﻧَﻢ", v: r => r.name }, { t: "ID", v: r => r.nid }, { t: "ﺭَﺟِﻲ", v: r => r.regNo },
+        { t: "ﻓُﻮﻧُﻮ", v: r => r.phone }, { t: "ﺣَﺎﺿِﺮُ", v: () => "" },
+        { t: "ﺳﻮﺋِﻲ", html: () => "<div style='width:90px;height:22px'></div>" }], rows)
+        + sigBlock(["ﺳِﻜْﺮِﻳﺘَﺎﺭِﻱ", "ﺳُﻮﭙَﻭَﺍﻳﺰَﺭ"]), { sub: sub() })),
+      btn("📌 ﻧﻮﺗِﻴﺲ ﺑﻮﺭﺩ", async rows => {
+        const c = await import("../print.js").then(m => m); // already imported above
+        printDoc("ﻧﻮﺗِﻴﺲ ﺑﻮﺭﺩ", noticeBoardHTML(rows, sesById), { landscape: true, sub: sub() });
       }),
-      btn("📑 ޖަޖު ސެޝަން ޝީޓް (ޖަދުވަލު)", rows => {
-        const s = sesById[fSes.value]; const cat = catById(fCat.value || (rows[0] && rows[0].categoryId)); const rub = (cat && cat.rubric) || [];
-        printDoc("ޖަޖުގެ ސެޝަން ޝީޓް", `<table><thead><tr><th>#</th><th>ނަން</th><th>ރެޖި</th>${rub.map(r => `<th class="num">${esc(r.name)}<br>(${r.max})</th>`).join("")}<th class="num">ޖުމްލަ</th></tr></thead><tbody>
-          ${rows.map((r, i) => `<tr><td class="num">${r.order || i + 1}</td><td>${esc(r.name)}</td><td>${esc(r.regNo)}</td>${rub.map(() => "<td></td>").join("")}<td></td></tr>`).join("")}</tbody></table>`
-          + sigBlock(["ޖަޖުގެ ނަން", "ޖަޖުގެ ސޮއި", "ތާރީޚް"]), { landscape: true, sub: sub() + (s ? " • " + s.name : "") });
+      btn("🪪 ﺩَﺭِﻭَﺭُ ﻛَﺎﺭْﺩُ", rows => printDoc("ﺩَﺭِﻭَﺭُ ﻛَﺎﺭْﺩُ", admitCardsHTML(rows, sesById))),
+      btn("📝 A5 ﺟَﺎﺝ ﺷِﻴﺖ (A5)", rows => {
+        const s = sesById[fSes.value];
+        const judges = s && s.judges ? s.judges : [];
+        const byCat = {};
+        rows.forEach(r => (byCat[r.categoryId] = byCat[r.categoryId] || []).push(r));
+        const html = judges.length
+          ? judges.map(j => Object.entries(byCat).map(([cid, list]) => a5JudgeSheetHTML(list, catById(cid), s, [j])).join("")).join("")
+          : Object.entries(byCat).map(([cid, list]) => a5JudgeSheetHTML(list, catById(cid), s)).join("");
+        printDoc("ﺟَﺎﺝ ﻣَﺎﻛُﺲ ﺷِﻴﺖ", html, { noHeader: false, sub: sub() + (s ? " • " + s.name : "") });
+      }),
+      btn("📑 ﺟَﺎﺝ ﺳِﻴﺴَﻦ ﺟَﺪَﻭَﻝ", rows => {
+        const s = sesById[fSes.value]; const cat = catById(fCat.value || (rows[0] && rows[0].categoryId));
+        const judges = s && s.judges ? s.judges : [{ slot: "1" }];
+        const html = judges.map(j => sessionJudgeTableHTML(rows, cat, s, j.slot)).join("<div style='page-break-after:always'></div>");
+        printDoc("ﺟَﺎﺝ ﺳِﻴﺴَﻦ ﺷِﻴﺖ", html, { landscape: true, sub: sub() + (s ? " • " + s.name : "") });
       })),
-    h("p.small.muted", "ނަތީޖާގެ ޝީޓްތައް (ރޭންކިންގ، ފުރިހަމަ ރުބްރިކް، ޖަޖު ޝީޓް) ޕްރިންޓް ކުރެވޭނީ 'ނަތީޖާ' ޓެބުން."),
-    h("div.row", h("span.small.muted", "ސޮއި ލައިން: "), h("span.small", signers().join("، ")))));
+    h("p.small.muted", "ﻧَﺘَﺎﺋِﺞ ﭘْﺮِﻳﻨْﺖ ﻛুﺮﻋّﭼ 'ﻧَﺘَﺎﺋِﺞ' ﭨَﺒُﻦ."),
+    h("div.row", h("span.small.muted", "ﺳﻮﺋِﻲ ﻟَﺎﻳِﻦ: "), h("span.small", signers().join("، ")))));
   sigN.onchange = () => view.querySelector(".row:last-child span.small:last-child").textContent = signers().join("، ");
 }
