@@ -29,7 +29,7 @@ async function chooseSession(view, key, onPick) {
 }
 function screenMenu(view, key) {
   // small hidden controls: double-click top-left corner
-  const m = h("div.fs-hint", "F11 = ފުލް ސްކްރީން • ސެޝަން ބަދަލުކުރުމަށް މިތަނަށް ޑަބަލްކްލިކް");
+  const m = h("div.fs-hint", "F11 = ފުލް ސްކްރީން  •  ސެޝަން ބަދަލުކުރުމަށް މިތަނަށް ޑަބަލްކްލިކް");
   m.ondblclick = () => { try { localStorage.removeItem(key); } catch (e) {} location.reload(); };
   view.appendChild(m);
   document.documentElement.requestFullscreen && view.addEventListener("click", () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {}); }, { once: true });
@@ -50,13 +50,18 @@ export async function studentScreen(view) {
     const top = h("div.scr-top", who, title);
     const bodyEl = h("div.scr-body");
     const lamp = h("div.corner-lamp.stop", { title: "" });
-    scr.append(top, bodyEl, lamp);
+    const standbyMsg = h("div.sb-msg", "ދަރިވަރަކަށް އިންތިޒާރުކުރަނީ");
+    const standby = h("div.standby", h("div.sb-logo", "RASFAHI"), h("div.sb-ses"), standbyMsg);
+    scr.append(top, bodyEl, lamp, standby);
     view.appendChild(scr);
     screenMenu(view, "scrStudentSes");
     let prevLight = null, busy = false;
     sub(onSnapshot(doc(db, "live", sid), s => {
       const L = s.exists() ? s.data() : null;
-      const on = L && L.studentId && (L.phase === "grid" || L.phase === "reading");
+      const on = !!(L && L.studentId && L.student && (L.phase === "grid" || L.phase === "reading"));
+      standby.querySelector(".sb-ses").textContent = (L && L.sessionName) || "";
+      standbyMsg.textContent = L && L.phase === "closed" ? "ސެޝަން ނިމިއްޖެ" : L && L.phase === "scoring" ? "ޖަޒާކަﷲ ޚައިރާ" : "ދަރިވަރަކަށް އިންތިޒާރުކުރަނީ";
+      standbyMsg.classList.remove("err");
       scr.classList.toggle("off", !on);
       lamp.className = "corner-lamp " + (L && L.light === "go" ? "go" : "stop");
       lamp.style.display = on && L.phase === "reading" ? "" : "none";
@@ -65,14 +70,18 @@ export async function studentScreen(view) {
       who.innerHTML = "";
       if (on) who.appendChild(h("div", { style: { fontSize: "2vw", fontWeight: 700 } }, L.student.name,
         h("span", { style: { fontSize: "1.2vw", color: "var(--muted)" } }, "  •  " + (L.categoryName || ""))));
-      render(on ? L : null);
-    }));
-    async function tap(n, L) {
+      try { render(on ? L : null); } catch (e) { scr.classList.add("off"); standbyMsg.textContent = "⚠ " + e.message; standbyMsg.classList.add("err"); }
+    }, e => { scr.classList.add("off"); standbyMsg.textContent = "⚠ ލައިވް ނުލިބުނު: " + (e.code || e.message); standbyMsg.classList.add("err"); }));
+    async function tap(n, L, btn) {
       if (busy || L.phase !== "grid") return;
       busy = true;
+      btn.classList.add("picking");                      // the chosen number lights up at once
+      bodyEl.querySelectorAll(".scr-grid > button").forEach(b => { if (b !== btn) b.classList.add("dim"); });
+      beep(740, 120);
+      await new Promise(r => setTimeout(r, 700));
       const r = await pickQuestion(sid, n);
       busy = false;
-      if (r === "ok") beep(740, 120);
+      if (r !== "ok") { btn.classList.remove("picking"); bodyEl.querySelectorAll(".scr-grid > button.dim").forEach(b => b.classList.remove("dim")); }
     }
     function render(L) {
       bodyEl.innerHTML = "";
@@ -84,8 +93,12 @@ export async function studentScreen(view) {
           h("div", { style: { fontSize: "2.4vw", marginBottom: "2.4vh", color: "var(--gold2)" } },
             qs.length ? `ސުވާލު ${qs.length + 1} — ނަންބަރެއް ހޮއްވަވާ` : "ނަންބަރެއް ހޮއްވަވާ",
             h("span", { style: { color: "var(--muted)", fontSize: "1.6vw" } }, `   (${picks.length} / ${qn})`)),
-          h("div.scr-grid.pickable", (L.grid || []).map(g => h("button" + (picks.includes(g.n) ? ".taken" : ""),
-            { disabled: picks.includes(g.n), onclick: () => tap(g.n, L) }, g.n)))));
+          h("div.scr-grid.pickable", (L.grid || []).map(g => {
+            const i = picks.indexOf(g.n);
+            const b = h("button" + (i >= 0 ? ".taken" : ""), { disabled: i >= 0 }, g.n, i >= 0 ? h("small", "ސުވާލު " + (i + 1)) : null);
+            if (i < 0) b.onclick = () => tap(g.n, L, b);
+            return b;
+          }))));
         return;
       }
       const q = qs[L.qIndex] || qs[qs.length - 1];
