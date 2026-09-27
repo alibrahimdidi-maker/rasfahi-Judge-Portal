@@ -56,3 +56,56 @@ export async function checkin(view) {
     }
   }
 }
+
+// ============================================================
+//  ADMIT (tablet at the door of the hall): when the judges' table presses ✔ ނިމުނު,
+//  the staff sends the next student in → the judges see the name, the student screen shows the grid.
+// ============================================================
+export async function admit(view) {
+  const { admitStudent, PHASE_DV } = await import("../liveops.js");
+  const { loadCategories, catById } = await import("../core.js");
+  await loadCategories();
+  const sessions = (await loadSessions(true)).filter(s => s.status !== "closed");
+  const pick = select([["", "— ސެޝަން ހޮވާ —"], ...sessions.map(s => [s.id, sessionLabel(s)])], sessionStorage.getItem("admSes") || "");
+  const body = h("div");
+  view.append(h("div.card", h("h2", "ކިޔެވުމަށް ވެއްދުން"), pick), body);
+  let stop = [];
+  pick.onchange = () => { sessionStorage.setItem("admSes", pick.value); run(); };
+  run();
+  function run() {
+    stop.forEach(u => u()); stop = [];
+    body.innerHTML = "";
+    const ses = sessions.find(s => s.id === pick.value);
+    if (!ses) return body.appendChild(empty(sessions.length ? "ސެޝަނެއް ހޮއްވަވާ" : "ހުޅުވިފައިވާ ސެޝަނެއް ނެތް"));
+    let L = null, studs = [];
+    stop.push(sub(onSnapshot(doc(db, "live", ses.id), s => { L = s.exists() ? s.data() : null; draw(); }, e => toast(e.message, "err"))));
+    stop.push(sub(onSnapshot(query(collection(db, "students"), where("sessionId", "==", ses.id)), s => {
+      studs = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0)); draw();
+    }, e => toast(e.message, "err"))));
+    const busy = () => L && L.studentId && ["grid", "reading", "scoring"].includes(L.phase);
+    async function go(st) {
+      if (!st.checkin && !await confirmBox("ޗެކްއިން ނުވޭ", st.name + " ޗެކްއިން ކޮށްފައި ނުވޭ. އެހެންނަމަވެސް ވައްދަންތޯ؟", "ވައްދާ", "orange")) return;
+      if (busy() && !await confirmBox("ކިޔަވަމުން ދަނީ", `${L.student.name} ގެ ކިޔެވުން އަދި ނުނިމޭ. ${st.name} ވައްދަންތޯ؟`, "ވައްދާ", "red")) return;
+      const d = new Set((L && L.done) || []);
+      await admitStudent(ses, st, L, studs.filter(x => !d.has(x.id) && x.id !== st.id));
+    }
+    function draw() {
+      body.innerHTML = "";
+      const d = new Set((L && L.done) || []);
+      const rest = studs.filter(x => !d.has(x.id) && !(L && L.studentId === x.id));
+      const nx = rest.find(x => x.checkin) || rest[0];
+      const state = !L || !L.studentId ? { t: "ހޯލު ހުސް — ދެން ދަރިވަރު ވައްދާ", c: "green" }
+        : L.phase === "scoring" || L.phase === "final" ? { t: `${L.student.name} ނިމުނީ — ދެން ދަރިވަރު ވައްދާ`, c: "green" }
+        : { t: `${L.student.name} — ${PHASE_DV[L.phase] || L.phase}`, c: "orange" };
+      body.appendChild(h("div.card", { style: { borderColor: state.c === "green" ? "var(--green)" : "var(--orange)" } },
+        h("div", { style: { fontSize: "20px", fontWeight: 700, color: state.c === "green" ? "var(--green2)" : "#ffc062" } }, state.t),
+        nx ? h("div", { style: { marginTop: "12px" } }, h("div.small.muted", "ދެން:"), idCard(nx),
+          h("button.btn.green.lg", { style: { width: "100%", marginTop: "12px", fontSize: "20px", padding: "16px" }, onclick: () => go(nx) }, "▶ ކިޔެވުމަށް ވެއްދި"))
+          : h("div.empty", { style: { marginTop: "10px" } }, "ބާކީ ދަރިވަރެއް ނެތް")));
+      if (rest.length > 1) body.appendChild(h("div.card", h("h3", `ބާކީ ދަރިވަރުން (${rest.length})`),
+        rest.map(x => h("div.queue-item", { onclick: () => go(x) }, h("b", x.order || ""), photoTag(x.photoThumb),
+          h("div.grow", x.name, h("div.small.muted", `${x.regNo} • ${x.categoryName || ""}`)),
+          x.checkin ? h("span.tag.green", "ހާޟިރު") : h("span.tag", "ނާދޭ")))));
+    }
+  }
+}

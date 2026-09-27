@@ -7,6 +7,7 @@ import {
   loadCategories, loadSessions, catById, sessionLabel, starsFor, starsHtml, starsEl, resultId, DEFAULT_RUBRIC, publicStudent
 } from "../core.js";
 import { errLabel } from "../tajweed.js";
+import { admitStudent, finishReading, backToGrid, clearStage, PHASE_DV } from "../liveops.js";
 import { printDoc, scoreSheetHTML, fullReportHTML, resultsHTML } from "../print.js";
 
 async function chiefSessions() {
@@ -72,11 +73,14 @@ export async function panel(view) {
   function run() {
     stop.forEach(u => u()); stop = [];
     const ses = sessions.find(s => s.id === pick.value) || sessions[0];
-    let L = null, scores = [], results = [], pending = 0;
+    let L = null, scores = [], results = [], pending = 0, studs = [];
     body.innerHTML = "";
     const top = h("div"), grid = h("div"), resBox = h("div.card");
     body.append(top, grid, resBox);
     stop.push(sub(onSnapshot(doc(db, "live", ses.id), s => { L = s.exists() ? s.data() : null; draw(); })));
+    stop.push(sub(onSnapshot(query(collection(db, "students"), where("sessionId", "==", ses.id)), s => {
+      studs = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0)); draw(); }, () => {})));
+    const upcoming = (except) => { const d = new Set((L && L.done) || []); return studs.filter(x => !d.has(x.id) && x.id !== except); };
     stop.push(sub(onSnapshot(scoreQuery(ses.id), s => { scores = s.docs.map(d => ({ id: d.id, ...d.data() })); draw(); }, e => toast(e.message, "err"))));
     stop.push(sub(onSnapshot(resultQuery(ses.id), s => { results = s.docs.map(d => ({ id: d.id, ...d.data() })); drawResults(); }, e => toast(e.message, "err"))));
     if (!isAdminRole()) stop.push(sub(onSnapshot(query(collection(db, "amendRequests"), where("chiefEmail", "==", S.me.email)), s => {
@@ -131,7 +135,17 @@ export async function panel(view) {
         h("div.row", h("h2", { style: { margin: 0 } }, ses.name), h("span.tag", ses.date + " " + (ses.time || "")), h("span.tag.gold", ses.status === "closed" ? "ނިމިފައި" : ses.status === "live" ? "ހިނގަމުންދަނީ" : "ރޭވިފައި"),
           pending ? h("a.tag.orange", { href: "#amend" }, `⏳ ${pending} އެމެންޑް ރިކުއެސްޓް`) : null),
         ses.status !== "closed" ? h("button.btn.red", { onclick: closeSession }, "✔ ސެޝަން ނިންމާ") : h("span.tag.green", "ނަތީޖާ ޕަބްލިޝް ކުރެވިފައި"))));
-      if (!L || !L.studentId) { grid.appendChild(h("div.card", empty(L && L.phase === "closed" ? "ސެޝަން ނިމިފައި" : "މިހާރު ދަރިވަރަކު ނެތް"))); return; }
+      if (!L || !L.studentId) {
+        if ((L && L.phase === "closed") || ses.status === "closed") { grid.appendChild(h("div.card", empty("ސެޝަން ނިމިފައި"))); return; }
+        const rest = upcoming(""), nx = rest.find(x => x.checkin) || rest[0];
+        const other = select([["", "— އެހެން ދަރިވަރަކު —"], ...rest.map(x => [x.id, `${x.order || ""}. ${x.name}${x.checkin ? "" : " (ނާދޭ)"}`])], "");
+        other.onchange = () => { const st = rest.find(x => x.id === other.value); if (st) admitStudent(ses, st, L, upcoming(st.id)); };
+        grid.appendChild(h("div.card", h("h3", "ދެން ދަރިވަރު ކިޔެވުމަށް ވެއްދުން"),
+          nx ? h("div", idCard(nx), h("button.btn.primary.lg", { style: { width: "100%", marginTop: "10px" }, onclick: () => admitStudent(ses, nx, L, upcoming(nx.id)) }, "▶ " + nx.name + " — ކިޔެވުމަށް ވެއްދި"))
+            : empty("ބާކީ ދަރިވަރެއް ނެތް"),
+          rest.length > 1 ? h("div", { style: { marginTop: "10px" } }, other) : null));
+        return;
+      }
       const mine = scores.filter(s => s.studentId === L.studentId);
       const rub = (mine[0] && mine[0].rubric) || (catById(L.categoryId) || {}).rubric || DEFAULT_RUBRIC;
       const locked = mine.filter(s => s.locked);
@@ -140,7 +154,11 @@ export async function panel(view) {
       card.append(h("div.row.between", idCard(L.student),
         h("div.center", h("div.small.muted", "ޕްރޮވިޜަނަލް ފައިނަލް"), h("div", { style: { fontSize: "40px", fontWeight: 900, color: "#00e676" } }, locked.length ? fmt2(fin) : "-"),
           starsEl(locked.length ? starsFor(fin) : 0))),
-        h("div.row", { style: { margin: "8px 0" } }, h("span.phase-pill", { grid: "ގްރިޑް", reading: `ކިޔަވަނީ — ސުވާލު ${L.qIndex + 1}/${(L.questions || []).length}`, scoring: "މާކްސް ދެނީ", final: "ނިމިއްޖެ" }[L.phase] || L.phase),
+        h("div.row", { style: { margin: "8px 0" } }, h("span.phase-pill", L.phase === "reading" ? `ކިޔަވަނީ — ސުވާލު ${L.qIndex + 1}/${L.qCount || (L.questions || []).length}` : PHASE_DV[L.phase] || L.phase),
+          L.phase === "reading" ? ((L.questions || []).length < (L.qCount || 1)
+            ? h("button.btn.primary", { onclick: () => backToGrid(ses, L) }, "ދެން ސުވާލު ހޮވާ ▶")
+            : h("button.btn.blue", { onclick: async () => { if (await confirmBox("✔ ކިޔެވުން ނިމުނީ", "ދަރިވަރު ސްކްރީން އޮފްވެ، ޖަޖުންނަށް މާކްސް ސޭވްކުރުމަށް ފޮނުވާނެ.", "ނިމުނީ", "green")) finishReading(ses, L); } }, "✔ ނިމުނު")) : null,
+          L.phase === "final" ? h("button.btn.primary", { onclick: () => clearStage(ses, L, upcoming(L.studentId)) }, "⏭ ދެން ދަރިވަރު") : null,
           L.light ? h("span.light." + (L.light === "go" ? "go" : "stop")) : null));
       const js = (ses.judges || []).slice().sort((a, b) => a.slot - b.slot);
       card.appendChild(h("div.tbl-wrap", h("table.tbl",

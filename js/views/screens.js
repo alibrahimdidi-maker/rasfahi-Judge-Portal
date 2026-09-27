@@ -36,73 +36,84 @@ function screenMenu(view, key) {
 }
 
 // ------------------------------------------------------------ STUDENT SCREEN
+//  off (black) when no one is reading • number grid (touch) • the question
+//  ނުބަލައި: blank screen — no information about the passage
+//  small red / green box in the corner: green = judges pressed ▶ ފަށާ
 export async function studentScreen(view) {
-  await loadQuran();
+  await loadQuran({ tanzil: S.settings.textSource === "tanzil" });
+  const { pickQuestion } = await import("../liveops.js");
+  const { portion } = await import("../quran.js");
   await chooseSession(view, "scrStudentSes", (sid) => {
     view.innerHTML = "";
     const scr = h("div.screen.student");
-    const title = h("div.scr-title", "RASFAHI"), who = h("div.grow"), light = h("span.light.scr-light");
+    const title = h("div.scr-title", "RASFAHI"), who = h("div.grow");
+    const top = h("div.scr-top", who, title);
     const bodyEl = h("div.scr-body");
-    scr.append(h("div.scr-top", light, who, title), bodyEl);
+    const lamp = h("div.corner-lamp.stop", { title: "" });
+    scr.append(top, bodyEl, lamp);
     view.appendChild(scr);
     screenMenu(view, "scrStudentSes");
-    let prevLight = null;
+    let prevLight = null, busy = false;
     sub(onSnapshot(doc(db, "live", sid), s => {
       const L = s.exists() ? s.data() : null;
-      light.className = "light scr-light " + (L && L.light === "go" ? "go" : "stop");
-      if (L && prevLight && L.light !== prevLight) beep(L.light === "go" ? 988 : 440, 250);
+      const on = L && L.studentId && (L.phase === "grid" || L.phase === "reading");
+      scr.classList.toggle("off", !on);
+      lamp.className = "corner-lamp " + (L && L.light === "go" ? "go" : "stop");
+      lamp.style.display = on && L.phase === "reading" ? "" : "none";
+      if (L && prevLight && L.light !== prevLight && on) beep(L.light === "go" ? 988 : 440, 250);
       prevLight = L && L.light;
       who.innerHTML = "";
-      if (L && L.student) who.appendChild(h("div", { style: { fontSize: "2vw", fontWeight: 700 } }, L.student.name, h("span", { style: { fontSize: "1.2vw", color: "var(--muted)" } }, "  •  " + (L.categoryName || ""))));
-      else who.appendChild(h("div", { style: { fontSize: "1.8vw", color: "var(--muted)" } }, L ? L.sessionName || "" : ""));
-      render(L);
+      if (on) who.appendChild(h("div", { style: { fontSize: "2vw", fontWeight: 700 } }, L.student.name,
+        h("span", { style: { fontSize: "1.2vw", color: "var(--muted)" } }, "  •  " + (L.categoryName || ""))));
+      render(on ? L : null);
     }));
+    async function tap(n, L) {
+      if (busy || L.phase !== "grid") return;
+      busy = true;
+      const r = await pickQuestion(sid, n);
+      busy = false;
+      if (r === "ok") beep(740, 120);
+    }
     function render(L) {
       bodyEl.innerHTML = "";
-      if (!L || !L.studentId) {
-        bodyEl.appendChild(h("div.center", h("div", { style: { fontFamily: "var(--quran)", fontSize: "5vw", color: "var(--gold)" } }, "بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ"),
-          h("div", { style: { fontSize: "2.4vw", marginTop: "2vh", color: "var(--muted)" } }, L && L.phase === "closed" ? "ސެޝަން ނިމިއްޖެ" : "ދަރިވަރަކަށް އިންތިޒާރުކުރަނީ")));
-        return;
-      }
+      if (!L) return;                                   // screen off
+      const qs = L.questions || [], qn = L.qCount || 1;
       if (L.phase === "grid") {
         const picks = L.picks || [];
-        bodyEl.appendChild(h("div.center", h("div", { style: { fontSize: "2.2vw", marginBottom: "2vh", color: "var(--gold2)" } }, `ނަންބަރު ${L.qCount} ހޮއްވަވާ (${picks.length}/${L.qCount})`),
-          h("div.scr-grid", (L.grid || []).map(g => h("div" + (picks.includes(g.n) ? ".taken" : ""), g.n)))));
+        bodyEl.appendChild(h("div.center",
+          h("div", { style: { fontSize: "2.4vw", marginBottom: "2.4vh", color: "var(--gold2)" } },
+            qs.length ? `ސުވާލު ${qs.length + 1} — ނަންބަރެއް ހޮއްވަވާ` : "ނަންބަރެއް ހޮއްވަވާ",
+            h("span", { style: { color: "var(--muted)", fontSize: "1.6vw" } }, `   (${picks.length} / ${qn})`)),
+          h("div.scr-grid.pickable", (L.grid || []).map(g => h("button" + (picks.includes(g.n) ? ".taken" : ""),
+            { disabled: picks.includes(g.n), onclick: () => tap(g.n, L) }, g.n)))));
         return;
       }
-      const qs = L.questions || [];
-      if (!qs.length) return;
-      if (L.phase === "scoring" || L.phase === "final") {
-        bodyEl.appendChild(h("div.center", h("div", { style: { fontSize: "4vw", color: "var(--gold2)" } }, "ޖަޒާކަﷲ ޚައިރާ"),
-          L.phase === "final" && L.lastResult && L.lastResult.student && L.lastResult.student.id === L.studentId
-            ? h("div", { style: { fontSize: "7vw", marginTop: "3vh" } }, h("span", { html: starsHtml(L.lastResult.stars) }))
-            : h("div", { style: { fontSize: "2vw", color: "var(--muted)", marginTop: "2vh" } }, "ޖަޖުން މާކްސް ދެއްވަނީ...")));
-        return;
-      }
-      const q = qs[L.qIndex] || qs[0];
+      const q = qs[L.qIndex] || qs[qs.length - 1];
+      if (!q) return;
       const hifz = L.branch === "hifz";
-      const side = h("div.scr-side", qs.map((x, i) => h("div.qc" + (i === L.qIndex ? ".cur" : i < L.qIndex ? ".done" : ""),
-        h("div", { style: { color: "var(--gold2)", fontFamily: "var(--ui)" } }, `ސުވާލު ${i + 1}`),
-        hifz ? null : h("div", { style: { fontFamily: "var(--quran)", fontSize: "1.6vw" } }, qLabel(x)))));
+      if (hifz) {
+        bodyEl.appendChild(h("div.center.hifz-blank",
+          h("div", { style: { fontSize: "4.2vw", color: "var(--gold2)", fontWeight: 700 } }, "ނުބަލައި ކިޔެވުމުގެ ގޮފި"),
+          h("div", { style: { fontSize: "2.2vw", color: "var(--muted)", marginTop: "2vh" } }, `ސުވާލު ${L.qIndex + 1} / ${qn}`)));
+        return;
+      }
+      const p = portion(q);
       const mainEl = h("div.scr-main");
-      if (!hifz) mainEl.appendChild(h("div.scr-banner", h("span", "ސޫރަތް: ", h("b", { style: { fontFamily: "var(--quran)" } }, q.surahName)),
-        h("span", `އާޔަތް: ${q.ayahFrom}${q.ayahTo !== q.ayahFrom ? " – " + q.ayahTo : ""}`), h("span", `ޞަފުޙާ: ${q.page}`), h("span", `ފޮތް: ${q.juz}`)));
+      mainEl.appendChild(h("div.scr-banner",
+        h("span", "ސޫރަތް: ", h("b", { style: { fontFamily: "var(--quran)" } }, p.surahAr), ` (${p.surahNo})`),
+        h("span", "ފޮތް: ", h("b", p.juz)),
+        h("span", "އާޔަތް: ", h("b", p.from === p.to ? p.from : `${p.from} – ${p.to}`)),
+        h("span", `ސުވާލު ${L.qIndex + 1} / ${qn}`)));
       const txt = h("div.scr-text");
       mainEl.appendChild(txt);
-      bodyEl.appendChild(h("div.scr-read", side, mainEl));
-      if (hifz) {
-        txt.appendChild(h("div.hifz-card", h("div.hs", "ނުބަލައި ކިޔެވުން — ސުވާލު " + (L.qIndex + 1)),
-          h("div", { style: { fontFamily: "var(--quran)", fontSize: "3.5vw", marginTop: "2vh", color: "#fff" } }, "سُورَةُ " + q.surahName),
-          L.hint ? framed(h("div.hw", openingWords(q, L.hint) + " ..."), false) : null));
-        return;
-      }
+      bodyEl.appendChild(h("div.scr-read.single", mainEl));
       if ((L.display || S.settings.studentDisplay) === "image") {
         const m = S.settings.mushaf;
-        const [top, hgt] = slotBand(q.page, q.lineFrom, q.lineTo, m);
+        const [tp, hgt] = slotBand(q.page, q.lineFrom, q.lineTo, m);
         const wrap = h("div.scr-img", h("img", { src: pageImageURL(q.page, m), onerror: () => { wrap.innerHTML = ""; wrap.appendChild(textPage(q)); } }));
-        wrap.appendChild(h("div.band", { style: { top: top + "%", height: hgt + "%", left: m.left + "%", right: m.right + "%" } }));
-        wrap.appendChild(h("div.rog", { style: { top: top + "%", height: hgt + "%", right: `calc(${m.right}% - 1.4vw)` } }));
-        wrap.appendChild(h("div.arrow", { style: { top: `calc(${top}% - 1.3vw)`, right: `calc(${m.right}% - 3.2vw)` } }, "◀"));
+        wrap.appendChild(h("div.band", { style: { top: tp + "%", height: hgt + "%", left: m.left + "%", right: m.right + "%" } }));
+        wrap.appendChild(h("div.rog", { style: { top: tp + "%", height: hgt + "%", right: `calc(${m.right}% - 1.4vw)` } }));
+        wrap.appendChild(h("div.arrow", { style: { top: `calc(${tp}% - 1.3vw)`, right: `calc(${m.right}% - 3.2vw)` } }, "◀"));
         txt.appendChild(framed(wrap, true));
         return;
       }
@@ -112,7 +123,7 @@ export async function studentScreen(view) {
 }
 // only the lines of the question, laid out exactly as on the Madinah page, auto-sized
 function textPage(q) {
-  const box = h("div", { html: renderPage(q.page, { range: [q.wStart, q.wEnd] }) });
+  const box = h("div", { html: renderPage(q.page, { range: [q.wStart, q.wEnd], source: S.settings.textSource }) });
   const pg = box.firstChild;
   pg.querySelectorAll(".qline.dim, .sura-head, .qline.basmala").forEach(e => {
     // keep sura headers/basmala only if they sit inside the question block

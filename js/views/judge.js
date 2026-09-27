@@ -9,13 +9,23 @@ import {
   h, esc, toast, modal, confirmBox, promptBox, select, spinner, empty, audit, sub, idCard, fmt2, round, fmtDateTime,
   loadCategories, catById, sessionLabel, scoreId, uid, beep, DEFAULT_RUBRIC
 } from "../core.js";
-import { loadQuran, renderPage, renderFlow, wordInfo, qLabelDv, qLabel } from "../quran.js";
+import { loadQuran, renderPage, wordInfo, qLabelDv, qLabel, portion } from "../quran.js";
 import { JALI, JALI_TYPES, KHAFI_GROUPS, khafiInfo, errLabel } from "../tajweed.js";
 import { printDoc, scoreSheetHTML } from "../print.js";
 
 async function mySessions() {
   const snap = await getDocs(query(collection(db, "sessions"), where("judgeEmails", "array-contains", S.me.email)));
   return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(b.date + b.time).localeCompare(String(a.date + a.time)));
+}
+
+// the passage: surah (number), juz, ayah from–to (judges always see it; the student does not in ނުބަލައި)
+function portionEl(q, hifz) {
+  const p = portion(q); if (!p) return "";
+  return h("div.portion" + (hifz ? ".hifz" : ""),
+    hifz ? h("span.tag.orange", "ނުބަލައި") : null,
+    h("span", "ސޫރަތް: ", h("b.ar", p.surahAr), ` (${p.surahNo})`), h("span", "ފޮތް: ", h("b", p.juz)),
+    h("span", "އާޔަތް: ", h("b", p.from === p.to ? p.from : `${p.from} – ${p.to}`)), h("span", "ޞަފުޙާ: ", h("b", p.page)),
+    h("span.small.muted", `ފޮޅުވަތް ${p.lineFrom}–${p.lineTo}`));
 }
 
 // ------------------------------------------------------------ LIVE MARKING
@@ -169,25 +179,27 @@ export async function live(view) {
       head.appendChild(h("div.row.between", { style: { marginBottom: "8px" } },
         h("div.row", h("span.tag.gold", `ޖަޖު ${me.slot}`), h("b", me.name)),
         h("div.row", L && L.light ? h("span.light." + (L.light === "go" ? "go" : "stop")) : null,
-          h("span.small.muted", L ? ({ idle: "ދަރިވަރަކަށް އިންތިޒާރުކުރަނީ", grid: "ދަރިވަރު ސުވާލު ހޮވަނީ", reading: L.light === "go" ? "ކިޔަވަނީ" : "ހުއްޓިފައި", scoring: "މާކްސް ސޭވްކުރައްވާ", final: "ނިމިއްޖެ" }[L.phase] || "") : "ލައިވް ނެތް"))));
+          h("span.small.muted", L ? ({ idle: "ދަރިވަރަކަށް އިންތިޒާރުކުރަނީ", grid: "ދަރިވަރު ނަންބަރު ހޮވަނީ", reading: L.light === "go" ? "ކިޔަވަނީ" : "ހުއްޓިފައި", scoring: "މާކްސް ސޭވްކުރައްވާ", final: "ނިމިއްޖެ" }[L.phase] || "") : "ލައިވް ނެތް"))));
       if (!L || !L.studentId) { main.appendChild(h("div.card", empty("ދަރިވަރަކު ގޮވުމަށް އިންތިޒާރުކުރަނީ..."))); if (L && L.lastResult) main.appendChild(h("div.card", h("div.small.muted", "ކުރީގެ ދަރިވަރު"), idCard(L.lastResult.student, { more: false }))); return; }
       main.appendChild(h("div", { style: { marginBottom: "10px" } }, idCard(L.student)));
       if (!D) D = { errors: [], adj: {}, note: "" };
       const qs = L.questions || [];
-      if (!qs.length) { main.appendChild(h("div.card", empty(L.phase === "grid" ? `ދަރިވަރު ގްރިޑުން ސުވާލު ހޮވަނީ... (${(L.picks || []).length}/${L.qCount})` : "ސުވާލު ނެތް"))); }
+      if (L.phase === "grid") main.appendChild(h("div.card.center", { style: { padding: "18px" } },
+        h("div", { style: { fontSize: "18px", color: "var(--gold2)" } }, qs.length ? `ދަރިވަރު ${qs.length + 1} ވަނަ ސުވާލުގެ ނަންބަރު ހޮވަނީ...` : "ދަރިވަރު ނަންބަރު ހޮވަނީ..."),
+        h("div.small.muted", `${(L.picks || []).length} / ${L.qCount || 1}`)));
+      if (!qs.length) { if (L.phase !== "grid") main.appendChild(h("div.card", empty("ސުވާލު ނެތް"))); }
       else {
         if (viewQ >= qs.length) viewQ = qs.length - 1;
         const q = qs[viewQ];
         main.appendChild(h("div.qbar",
-          h("span.qn", `ސުވާލު ${viewQ + 1} / ${qs.length}`),
+          h("span.qn", `ސުވާލު ${viewQ + 1} / ${L.qCount || qs.length}`),
           h("div.qtabs", qs.map((x, i) => h("button" + (i === viewQ ? ".view" : "") + (i === L.qIndex ? ".cur" : ""), { onclick: () => { viewQ = i; draw(); } },
             `${i + 1}${i === L.qIndex ? " ●" : ""}`))),
-          h("span.grow.small", qLabelDv(q)),
+          h("span.grow", portionEl(q, L.branch === "hifz")),
           viewQ !== L.qIndex && L.phase === "reading" ? h("button.btn.sm.orange", { onclick: () => { viewQ = L.qIndex; draw(); } }, "ހިނގަމުންދާ ސުވާލަށް ↩") : null));
         const marks = {};
         D.errors.filter(e => e.qIndex === viewQ).forEach(e => { marks[e.w] = marks[e.w] && marks[e.w] !== e.type ? "both" : e.type; });
-        const src = S.settings.textSource;
-        const pg = h("div.clickable", { html: src === "tanzil" ? `<div class="flow tz">${renderFlow(q, { source: "tanzil", marks })}</div>` : renderPage(q.page, { range: [q.wStart, q.wEnd], marks }) });
+        const pg = h("div.clickable" + (L.branch === "hifz" ? ".hifz-dim" : ""), { html: renderPage(q.page, { range: [q.wStart, q.wEnd], marks, source: S.settings.textSource }) });
         pg.addEventListener("click", onWordTap);
         pg.addEventListener("dblclick", e => e.preventDefault());
         main.appendChild(pg);
