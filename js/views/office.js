@@ -8,6 +8,41 @@ import {
   loadCategories, loadSessions, catById, cache, photoTag, resizeImage, ageOn, downloadCSV, PUBLIC_BASE_URL, sessionLabel, todayISO
 } from "../core.js";
 import { printDoc, tableHTML, admitCardsHTML, blankSheetsHTML, sigBlock, a5JudgeSheetHTML, noticeBoardHTML, sessionJudgeTableHTML } from "../print.js";
+import { downloadSampleList, downloadImportTemplate, loadSampleIntoFirestore, removeSampleData } from "../dummy.js";
+
+// ---- read a .csv or .xlsx file into rows (array of arrays) ----
+function parseCSV(text) {
+  text = text.replace(/^\uFEFF/, "");
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === "," || ch === ";" && !text.slice(0, 2000).includes(",")) { row.push(cell); cell = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += ch;
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => String(c).trim() !== ""));
+}
+async function readSheet(file) {
+  if (/\.xlsx?$/i.test(file.name)) {
+    const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+    const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    return XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, dateNF: "yyyy-mm-dd", defval: "" })
+      .filter(r => r.some(c => String(c).trim() !== ""));
+  }
+  return parseCSV(await file.text());
+}
+// "14/05/2012", "2012-05-14", "5/14/2012" → "2012-05-14"
+function toISO(v) {
+  const t = String(v || "").trim(); if (!t) return "";
+  let m = t.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/); if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  m = t.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (m) { let d = +m[1], mo = +m[2]; if (mo > 12) [d, mo] = [mo, d]; return `${m[3]}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`; }
+  const d = new Date(t); return isNaN(d) ? t : d.toISOString().slice(0, 10);
+}
 
 const canEdit = () => ["superadmin", "adminsec"].includes(S.me.role);
 const needComp = (view) => {
@@ -250,127 +285,61 @@ export async function students(view) {
   const box = h("div", spinner());
   card.append(h("div.filters", fTxt, fCat, fGen, fInst, fSes, fCk,
     canEdit() ? h("button.btn.primary", { onclick: () => edit() }, "+ ދަރިވަރެއް") : null,
-    canEdit() ? h("button.btn.orange", { onclick: () => importCSV() }, "📥 CSV ތެރެ ކިޔެވުން") : null,
     h("button.btn", { onclick: () => exportCSV() }, "⬇ CSV"), h("button.btn", { onclick: () => printList() }, "🖨 ލިސްޓް"),
-    h("button.btn", { onclick: () => printDoc("ދަރިވަރު ކާޑު", admitCardsHTML(filtered(), Object.fromEntries(sessions.map(s => [s.id, s])))) }, "🪪 ކާޑު"),
-    // Dummy download panel toggle
-    h("button.btn.orange", { title:"ޑަމީ — ސިސްޓަމް ޓެސްޓް", onclick: () => { const p=card.querySelector(".dummy-panel"); if(p){p.remove();}else{card.appendChild(dummyPanel());} } }, "🧪 ﺩَﻣِّﻲ")), box);
+    h("button.btn", { onclick: () => printDoc("ދަރިވަރު ކާޑު", admitCardsHTML(filtered(), Object.fromEntries(sessions.map(s => [s.id, s])))) }, "🪪 ކާޑު")), box);
+  if (canEdit()) view.appendChild(sampleCard());
   view.appendChild(card);
+
+  // ---------------------------------------------------------------- SAMPLE LISTS, TEST DATA & IMPORT
+  function sampleCard() {
+    const status = h("div.small.muted", { style: { marginTop: "8px" } });
+    const busy = (on, msg) => { status.textContent = msg || ""; c.querySelectorAll("button").forEach(b => b.disabled = on); };
+    const run = async (msg, fn) => { busy(true, msg); try { await fn(); } catch (e) { toast(e.message || String(e), "err", 7000); } finally { busy(false, status.textContent); } };
+    const cnt = select([["100", "100 ދަރިވަރުން"], ["300", "300 ދަރިވަރުން"], ["1000", "1000 ދަރިވަރުން"], ["2000", "2000 ދަރިވަރުން"]], "300");
+    const box = (title, text, ...btns) => h("div", { style: { border: "1px solid var(--line2)", borderRadius: "12px", padding: "14px", background: "var(--panel2)" } },
+      h("div", { style: { fontWeight: 700, color: "var(--gold2)", marginBottom: "6px", fontSize: "15px" } }, title),
+      h("p.small.muted", { style: { margin: "0 0 10px", lineHeight: 1.8 } }, text), h("div.row", ...btns));
+    const load2 = (withMarks) => run("ލޯޑުވަނީ...", async () => {
+      const n = +cnt.value;
+      const ok = await confirmBox("ޓެސްޓަށް ނަމޫނާ ޑޭޓާ ލޯޑުކުރުން",
+        `${n} ނަމޫނާ ދަރިވަރުން${withMarks ? "، 5 ޖަޖުންގެ މާކްސް އަދި ނަތީޖާ" : " (މާކްސް ނެތި)"} ހިނގަމުންދާ މުބާރާތަށް ވައްދާނެ. ` +
+        "ބައިތައް ނެތްނަމަ 8 ނަމޫނާ ބައި ހަދާނެ. ބައިތަކަށް ބަހާލައި، ކޮންމެ ބައެއްގެ ސެޝަނެއްވެސް ހަދާނެ. ފަހުން '🗑 ނަމޫނާ ޑޭޓާ ފޮހެލާ' އިން މުޅިން ފޮހެލެވޭނެ.", "ލޯޑުކުރޭ", "primary");
+      if (!ok) return;
+      const r = await loadSampleIntoFirestore({ count: n, withMarks, onProgress: (d, t) => status.textContent = `ލޯޑުވަނީ... ${d} / ${t}` });
+      status.textContent = `✔ ${r.students} ދަރިވަރުން، ${r.sessions} ސެޝަން` + (r.categories ? `، ${r.categories} ބައި` : "") +
+        (withMarks ? `، ${r.results} ނަތީޖާ، ${r.scores} ޖަޖު ޝީޓް` : "") + " ލޯޑުވެއްޖެ.";
+      if (r.scoreError) toast("ނަތީޖާ ލޯޑުވެއްޖެ، ނަމަވެސް ޖަޖު ޝީޓްތައް ނުވަދެއެވެ. އާ firestore.rules ޕަބްލިޝް ކުރައްވާ.", "warn", 9000);
+      else toast("ނަމޫނާ ޑޭޓާ ލޯޑުވެއްޖެ ✔");
+      load();
+    });
+    const c = h("div.card", { style: { border: "2px dashed var(--gold)" } },
+      h("h2", "🧪 ނަމޫނާ ލިސްޓާއި ސިސްޓަމް ޓެސްޓް"),
+      h("div.grid3", { style: { gap: "12px" } },
+        box("⬇ ނަމޫނާ ލިސްޓް ޑައުންލޯޑް",
+          "2000 ދަރިވަރުންގެ ފުރިހަމަ މަޢުލޫމާތު: ނަން، އައިޑީ، ރެޖި ނަންބަރު، ދާއިމީ އެޑްރެސް، ބައި، ގޮފި، ޢުމުރުފުރާ، މުއައްސަސާ. " +
+          "'މާކްސް އާއެކު' ފައިލުގައި 5 ޖަޖުންގެ މާކްސް، ފައިނަލް، ތަރި އަދި ވަނަ ހުންނާނެ. 'މާކްސް ހުސް' ފައިލުގައި މާކްސް ލިޔުމުން Excel އިން ޖުމްލަ، ފައިނަލް އަދި ތަރި ހިސާބުކުރާނެ.",
+          h("button.btn.primary", { onclick: () => run("ފައިލު ހަދަނީ...", async () => { const n = await downloadSampleList(true); status.textContent = `✔ ${n} ދަރިވަރުންގެ ފައިލު ޑައުންލޯޑުވެއްޖެ (މާކްސް އާއެކު)`; }) }, "⬇ މާކްސް އާއެކު"),
+          h("button.btn", { onclick: () => run("ފައިލު ހަދަނީ...", async () => { const n = await downloadSampleList(false); status.textContent = `✔ ${n} ދަރިވަރުންގެ ފައިލު ޑައުންލޯޑުވެއްޖެ (މާކްސް ހުސްކޮށް)`; }) }, "⬇ މާކްސް ހުސްކޮށް")),
+        box("▶ ސޮފްޓްވެއަރ ޓެސްޓަށް ލޯޑުކުރުން",
+          "ނަމޫނާ ދަރިވަރުން ސިސްޓަމަށް ވައްދާ. 'މާކްސް އާއެކު' ލޯޑުކުރުމުން ނަތީޖާ، ވަނަ، ޖަލްސާގެ ޕްރިންޓް ފަދަ ހުރިހާ ތަނެއް ބަލާލެވޭނެ. " +
+          "'މާކްސް ނެތި' ލޯޑުކުރުމުން ސެޝަން ހުޅުވައި، ލައިވް ކޮންޓްރޯލާއި ޖަޖުން މާކްސް ދޭ ގޮތް ޓެސްޓްކުރެވޭނެ.",
+          cnt,
+          h("button.btn.green", { onclick: () => load2(true) }, "▶ މާކްސް އާއެކު"),
+          h("button.btn", { onclick: () => load2(false) }, "▶ މާކްސް ނެތި"),
+          h("button.btn.red.sm", { onclick: () => run("ފޮހެލަނީ...", async () => {
+            if (!await confirmBox("ނަމޫނާ ޑޭޓާ ފޮހެލުން", "ނަމޫނާ ގޮތުގައި ލޯޑުކުރި ހުރިހާ ދަރިވަރުން، ސެޝަން، މާކްސް އަދި ނަތީޖާ ފޮހެލާނެ. އަސްލު ޑޭޓާއަށް އަސަރެއް ނުކުރާނެ.", "ފޮހެލާ", "red")) return;
+            const n = await removeSampleData((col, k) => status.textContent = `ފޮހެލަނީ... ${col}: ${k}`);
+            status.textContent = `✔ ${n} ނަމޫނާ ރެކޯޑު ފޮހެލައިފި`; load();
+          }) }, "🗑 ނަމޫނާ ޑޭޓާ ފޮހެލާ")),
+        box("📥 Excel / ގޫގުލް ފޯމް ލިސްޓް ވައްދާ",
+          "ސޮފްޓްވެއަރ ފޯމު ބޭނުންނުކުރެވޭ ޙާލަތުގައި ގޫގުލް ފޯމުން ނުވަތަ Excel ޝީޓަކުން ލިބޭ ލިސްޓް މިތަނުން ވައްދާ. " +
+          "ފުރަތަމަ ހުސް ޓެމްޕްލޭޓް ޑައުންލޯޑްކޮށް، ކޮލަމްތައް އެގޮތަށް ފުރުއްވާ. (.xlsx ނުވަތަ .csv)",
+          h("button.btn.orange", { onclick: () => importStudents() }, "📥 ފައިލު ހޮވާ"),
+          h("button.btn.sm", { onclick: () => downloadImportTemplate() }, "⬇ ހުސް ޓެމްޕްލޭޓް"))),
+      status);
+    return c;
+  }
   let list = [];
-  // ---------------------------------------------------------------- DUMMY PANEL
-  function dummyPanel() {
-    const wrap = h("div.dummy-panel", { style: "border:2px dashed var(--gold);border-radius:12px;padding:16px;margin-top:14px;background:rgba(201,164,67,.06)" });
-    wrap.appendChild(h("h3", { style: "margin:0 0 6px" }, "🧪 ﭨِﺴْﭨِﻴﻨْﮒ & ﺩَﻣِّﻲ ﺩَﺍﺋِﻤِﻲ"));
-    wrap.appendChild(h("p.small.muted", { style:"margin:0 0 12px" },
-      "2000 ދަރިވަރު، 8 ކެޓަގަރީ، 5 ޖަޖުންގެ ސިސްޓަމް ޓެސްޓް ފައިލް ޑައުންލޯޑްކޮށް ތިން ގޮތަށް ބޭނުންކުރެވޭ:"));
-    wrap.appendChild(h("div.grid3", { style: "gap:10px;margin-bottom:14px" },
-      h("div", { style: "border:1px solid var(--line2);border-radius:10px;padding:12px" },
-        h("div", { style: "font-size:13px;font-weight:700;margin-bottom:6px;color:var(--gold2)" }, "⬇ CSV — މާކްސް ހިމެނޭ"),
-        h("p.small.muted", { style:"margin:0 0 8px" }, "2000 ދަރިވަރު + 5 ޖަޖުންގެ މާކްސް ހިމެނޭ — ނަތީޖާ ހަދާ ގޮތް ބެލެން"),
-        h("button.btn.primary", { onclick: () => makeBigDummyCSV(true) }, "⬇ ޑައުންލޯޑް (މާކްސް ހިމެނޭ)")),
-      h("div", { style: "border:1px solid var(--line2);border-radius:10px;padding:12px" },
-        h("div", { style: "font-size:13px;font-weight:700;margin-bottom:6px;color:var(--gold2)" }, "⬇ CSV — ހުސް ގޮޅި"),
-        h("p.small.muted", { style:"margin:0 0 8px" }, "2000 ދަރިވަރު + ހުސް ގޮޅި — ނަތީޖާ ލިޔެ ނިންމި ގޮތް ދެނެގަންނަން"),
-        h("button.btn", { onclick: () => makeBigDummyCSV(false) }, "⬇ ޑައުންލޯޑް (ހުސް ގޮޅި)")),
-      h("div", { style: "border:1px solid var(--line2);border-radius:10px;padding:12px" },
-        h("div", { style: "font-size:13px;font-weight:700;margin-bottom:6px;color:var(--gold2)" }, "📥 Google Forms / Excel"),
-        h("p.small.muted", { style:"margin:0 0 8px" }, "ލޯކަލް CSV/Excel ފައިލަކުން ދަރިވަރުން ވެއްދޭ ← ތިރީ CSV ތެރެ"),
-        h("button.btn.orange", { onclick: () => importCSV() }, "📥 CSV ތެރެ ލޯޑްކުރޭ")),
-    ));
-    wrap.appendChild(h("div.row", { style: "gap:10px;flex-wrap:wrap" },
-      h("button.btn.red.sm", { onclick: async () => {
-        const cid = S.settings.activeCompetitionId; if(!cid) return toast("ހިނގަމުންދާ ތ ތ ތ ތ", "warn");
-        const ok = await confirmBox("Firestore ތެރެ ވެއްދުން", "ދ ދ ދ ދ ދ ދ — ދ ދ ދ ދ ދ ދ ދ ދ ދ ދ ދ ދ", "ވެއްދޭ","red"); if(!ok) return;
-        await importDummyToFirestore(cid, false);
-      } }, "🔥 Firestore — ހުސް ގޮޅި"),
-      h("button.btn.red.sm", { onclick: async () => {
-        const cid = S.settings.activeCompetitionId; if(!cid) return toast("ހިނގަމުންދާ ތ ތ ތ ތ ތ", "warn");
-        const ok = await confirmBox("Firestore ތެރެ ވެއްދުން", "ދ ދ ދ ދ ދ ދ — ދ ދ ދ ދ ދ ދ ދ ދ ދ ދ ދ ދ", "ވެއްދޭ","red"); if(!ok) return;
-        await importDummyToFirestore(cid, true);
-      } }, "🔥 Firestore — މާކްސް ހިމެނޭ"),
-    ));
-    return wrap;
-  }
-  // --- shared dummy data generator ---
-  const DUMMY_ISLANDS=["Male","Hulhumale","Addu","Fuvahmulah","Naifaru","Eydhafushi","Maamigili","Mahibadhoo","Velidhoo","Kulhudhuffushi","Felidhoo","Gan","Thinadhoo","Hithadhoo","Dharavandhoo"];
-  const DUMMY_SCHOOLS=["Aminiyya School","Iskandhar School","Ghiyaasuddin Int'l","Billabong High","Ameer Ahmed School","IUM","Fiyavathi School","Maafannu Middle","Hiriya School","Dharumavantha School","Rehendhi School","Haamidh School","Thaajudhdeen School","Kenereege School","Arabiyya School"];
-  const DUMMY_ISOTYPES=["School","University","QuranClass","Private","Club","Office"];
-  const DUMMY_FNAMES_M=["ﻋَﻠِﻲّ","ﺃَﺣْﻤَﺪ","ﻣُﺤَﻤَّﺪ","ﺇِﺑْﺮَﺍﻫِﻴﻢ","ﻳُﻮﺳُﻒ","ﺣَﺴَﻦ","ﻋَﺒْﺪُﺍﻟﻠَّﻪ","ﻋُﻤَﺮ","ﻣُﻮﺳَﻰ","ﻋِﻴﺴَﻰ","ﻫَﺎﺭُﻭﻥ","ﺻَﺎﻟِﺢ","ﻳَﺤْﻴَﻰ","ﺃَﺑُﻮﺑَﻜْﺮ","ﺃَﻧَﺲ"];
-  const DUMMY_FNAMES_F=["ﻓَﺎﻃِﻤَﺔ","ﺃَﺋِﺸَﺔ","ﺧَﺪِﻳﺠَﺔ","ﻣَﺮْﻳَﻢ","ﺯَﻳْﻨَﺐ","ﺃَﻣِﻴﻨَﺔ","ﻫَﺎﺟَﺮ","ﺭُﻗَﻴَّﺔ","ﺃَﺳِﻴﺮَﺓ","ﻧَﻔِﻴﺴَﺔ","ﺃَﻣَﻞ","ﻧُﻮﺭ","ﺣَﻔِﻴﻈَﺔ","ﺷَﻬِﻴﺪَﺓ","ﺳُﻮﺩَﺓ"];
-  const DUMMY_LNAMES=["ﺃَﺣْﻤَﺪ","ﻋَﻠِﻲّ","ﻣُﺤَﻤَّﺪ","ﺣَﺴَﻦ","ﺇِﺑْﺮَﺍﻫِﻴﻢ","ﺳَﻌِﻴﺪ","ﻋَﺒْﺪُﺍﻟﻠَّﻪ","ﻣُﻮﺳَﻰ","ﺭَﺷِﻴﺪ","ﻧَﺎﺻِﺮ","ﻣُﺤَﻤَّﺪ","ﻭَﺣِﻴﺪ","ﻟَﻄِﻴﻒ","ﺷَﺎﻓِﻲ","ﻓَﺮِﻳﺪ"];
-  const DUMMY_CATS2=[
-    {id:"dc_u8_b",  name:"U8 ﺑَﻠَﺎﺉ",  ag:"U8",  br:"balaigen",  rub:[{k:"thilawa",max:40},{k:"tajweed",max:30},{k:"maqamat",max:20},{k:"fasaha",max:10}]},
-    {id:"dc_u8_nb", name:"U8 ﻧُﺒَﻠَﺎﺉ", ag:"U8",  br:"nubalaigen",rub:[{k:"thilawa",max:40},{k:"tajweed",max:30},{k:"maqamat",max:20},{k:"fasaha",max:10}]},
-    {id:"dc_u13_b", name:"U13 ﺑَﻠَﺎﺉ", ag:"U13", br:"balaigen",  rub:[{k:"thilawa",max:30},{k:"tajweed",max:25},{k:"maqamat",max:25},{k:"fasaha",max:10},{k:"talaffuz",max:10}]},
-    {id:"dc_u13_nb",name:"U13 ﻧُﺒَﻠَﺎﺉ",ag:"U13", br:"nubalaigen",rub:[{k:"thilawa",max:30},{k:"tajweed",max:25},{k:"maqamat",max:25},{k:"fasaha",max:10},{k:"talaffuz",max:10}]},
-    {id:"dc_u18_b", name:"U18 ﺑَﻠَﺎﺉ", ag:"U18", br:"balaigen",  rub:[{k:"thilawa",max:25},{k:"tajweed",max:25},{k:"maqamat",max:20},{k:"sifa",max:20},{k:"fasaha",max:10}]},
-    {id:"dc_u18_nb",name:"U18 ﻧُﺒَﻠَﺎﺉ",ag:"U18", br:"nubalaigen",rub:[{k:"thilawa",max:25},{k:"tajweed",max:25},{k:"maqamat",max:20},{k:"sifa",max:20},{k:"fasaha",max:10}]},
-    {id:"dc_hifz",  name:"ﺣِﻔْﻆ ﺍﻟْﻘُﺮْﺁﻥ",ag:"Open",br:"hifz",     rub:[{k:"hifz",max:50},{k:"tajweed",max:30},{k:"maqamat",max:20}]},
-    {id:"dc_open",  name:"ﺍﻟﻔَﺘَﺢ",     ag:"Open",br:"balaigen",  rub:[{k:"thilawa",max:35},{k:"tajweed",max:30},{k:"maqamat",max:25},{k:"fasaha",max:10}]},
-  ];
-  const JUDGE_NAMES2=["ﺃَﺑُﻮﺑَﻜْﺮ ﺳَﻌِﻴﺪ","ﻋَﻠِﻲّ ﺣَﺴَﻦ","ﻫَﺎﺭُﻭﻥ ﻋَﺒْﺪُﺍﻟﻠَّﻪ","ﻓَﻮْﺯَﺓ ﻣُﺤَﻤَّﺪ","ﺷَﺎﻓِﻲ ﺇِﺑْﺮَﺍﻫِﻴﻢ"];
-  const SCORE_BASES=[0.96,0.91,0.87,0.82,0.93,0.88,0.95,0.84,0.90,0.86];
-
-  function makeDummyRows(withScores, count=2000) {
-    const rows=[]; const yr=new Date().getFullYear();
-    const mnF=DUMMY_FNAMES_M, fnF=DUMMY_FNAMES_F, ln=DUMMY_LNAMES, is=DUMMY_ISLANDS, sc=DUMMY_SCHOOLS, it=DUMMY_ISOTYPES;
-    for(let i=0;i<count;i++){
-      const ci=i%DUMMY_CATS2.length, c=DUMMY_CATS2[ci];
-      const isMale=(i%3)!==0;
-      const fn=(isMale?mnF:fnF)[i%15]; const lname=ln[i%15];
-      const name=`${fn} ${lname}`; const nameEn=`${fn.split(/\s/)[0]}_En ${lname.split(/\s/)[0]}_En`;
-      const age={U8:2018,U13:2013,U18:2008,Open:2000}[c.ag];
-      const dob=`${age-Math.floor(i/count*4)}-${String((i%12)+1).padStart(2,"0")}-${String((i%28)+1).padStart(2,"0")}`;
-      const island=is[i%is.length]; const inst=sc[i%sc.length]; const instType=it[Math.floor(i/count*it.length*2)%it.length];
-      const nid=`A${200000+i+1}`;
-      const reg=`R${String(yr).slice(-2)}-${String(i+1).padStart(4,"0")}`;
-      const row={regNo:reg,nid,name,nameEn,dob,gender:isMale?"M":"F",permAddress:`ﺩ.ﺩَﺍﺭُﻝﺃَﻣَﻞ، ${island}`,island,currentAddress:`ﻙ.ﻣَﺎﻟِﻲ`,
-        phone:`7${String(700000+i+1)}`,email:`${nid.toLowerCase()}@mail.mv`,categoryId:c.id,categoryName:c.name,branch:c.br,ageGroup:c.ag,
-        institution:inst,instType,guardianName:`ﻭَﻟِﻲّ ${lname}`,guardianPhone:`9${String(900000+i+1)}`};
-      if(withScores){
-        const base=SCORE_BASES[i%SCORE_BASES.length];
-        JUDGE_NAMES2.forEach((jn,j)=>{
-          const v=0.95+0.05*(j%3)/2;
-          c.rub.forEach(r=>{ row[`j${j+1}_${r.k}`]=Math.round(r.max*base*v*100)/100; });
-          row[`j${j+1}_total`]=c.rub.reduce((a,r)=>a+Math.round(r.max*base*v*100)/100,0);
-          row[`j${j+1}_name`]=jn;
-        });
-        const tots=JUDGE_NAMES2.map((_,j)=>row[`j${j+1}_total`]);
-        const sorted=[...tots].sort((a,b)=>a-b); row.final_score=Math.round(sorted.slice(1,4).reduce((a,v)=>a+v,0)/3*100)/100;
-        const mx=c.rub.reduce((a,r)=>a+r.max,0); const pct=row.final_score/mx;
-        row.stars=pct>=0.95?5:pct>=0.9?4:pct>=0.85?3:pct>=0.75?2:1;
-      }
-      rows.push(row);
-    }
-    return rows;
-  }
-
-  function makeBigDummyCSV(withScores) {
-    const rows=makeDummyRows(withScores);
-    const baseHdr=["regNo","nid","name","nameEn","dob","gender","permAddress","island","currentAddress","phone","email","categoryId","categoryName","branch","ageGroup","institution","instType","guardianName","guardianPhone"];
-    const scoreHdr=withScores?JUDGE_NAMES2.flatMap((_,j)=>DUMMY_CATS2[0].rub.map(r=>`j${j+1}_${r.k}`).concat([`j${j+1}_total`,`j${j+1}_name`])).concat(["final_score","stars"]):[];
-    const hdr=[...baseHdr,...scoreHdr];
-    const lines=[hdr.join(","),...rows.map(r=>hdr.map(k=>{const v=r[k]??"";return (typeof v==="string"&&v.includes(","))?`"${v}"`:v;}).join(","))];
-    const url="data:text/csv;charset=utf-8,﻿"+encodeURIComponent(lines.join("\n"));
-    const a=document.createElement("a"); a.href=url; a.download=`rasfahi_dummy_2000_${withScores?"with":"no"}_scores.csv`; a.click();
-    toast(`✔ ${rows.length} ދަރިވަރު — CSV ޑައުންލޯޑްވިއްޖެ`);
-  }
-
-  async function importDummyToFirestore(cid, withScores) {
-    toast("ލޯޑުވަނީ...");
-    const rows=makeDummyRows(withScores);
-    for(let i=0;i<rows.length;i+=20){
-      const b=writeBatch(db);
-      rows.slice(i,i+20).forEach((r,j)=>{
-        const id=`${cid}__${r.nid}`;
-        b.set(doc(db,"students",id),{...r,competitionId:cid,status:"active",sessionId:"",order:i+j+1,checkin:null,photoThumb:"",createdAt:serverTimestamp()});
-      });
-      await b.commit();
-    }
-    toast(`✔ ${rows.length} ދަރިވަރު Firestore ތެރެ ވެދިއްޖެ`);
-    load();
-  }
-  // ----------------------------------------------------------------
   async function load() {
     const snap = await getDocs(query(collection(db, "students"), where("competitionId", "==", S.settings.activeCompetitionId)));
     list = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.regNo).localeCompare(String(b.regNo)));
@@ -461,95 +430,82 @@ export async function students(view) {
       } }], { wide: true });
     if (ok) { toast("ސޭވް ކުރެވިއްޖެ"); load(); }
   }
-  // ---------------------------------------------------------------- CSV IMPORT
-  async function importCSV() {
-    const TPL_COLS = ["nid","name","nameEn","dob","gender","permAddress","island","currentAddress","phone","email","categoryId","institution","instType","guardianName","guardianPhone"];
-    const input = h("input", { type: "file", accept: ".csv,text/csv", style: { display: "none" } });
-    const preview = h("div", { style: { marginTop: "10px", maxHeight: "320px", overflowY: "auto" } });
-    const errBox = h("div");
-    let parsed = [];
-    const catMap = Object.fromEntries(cats.map(c => [c.id, c]));
-    const catByName = Object.fromEntries(cats.map(c => [c.name.trim().toLowerCase(), c]));
-    function parseFile(file) {
-      const r = new FileReader();
-      r.onload = e => {
-        const lines = e.target.result.split(/\r?\n/).filter(l => l.trim());
-        if (!lines.length) return;
-        const hdr = lines[0].split(",").map(h2 => h2.trim().replace(/^"|"$/g,"").toLowerCase());
-        const rows = lines.slice(1).map(line => {
-          const vals = []; let cur = "", inq = false;
-          for (const ch of line) { if (ch==='"') { inq=!inq; } else if (ch===","&&!inq) { vals.push(cur.trim()); cur=""; } else cur+=ch; }
-          vals.push(cur.trim());
-          const obj = {};
-          hdr.forEach((k,i) => { obj[k] = (vals[i]||"").replace(/^"|"$/g,""); });
-          return obj;
-        }).filter(r2 => r2.nid || r2["id"] || r2["national id"]);
-        // normalise key aliases
-        parsed = rows.map(r2 => {
-          const nid2 = normId(r2.nid || r2["id"] || r2["national id"] || r2["id no"] || "");
-          const name2 = r2.name || r2["full name"] || r2["ދިވެހި ނަން"] || "";
-          const cid2 = (catByName[(r2.categoryid||r2.category||r2["ބައި"]||"").toLowerCase()] || {}).id || r2.categoryid || "";
-          return { nid: nid2, name: name2, nameEn: r2.nameen||r2["name en"]||r2["english name"]||"", dob: r2.dob||r2["date of birth"]||"",
-            gender: (r2.gender||r2["ޖިންސް"]||"M").trim().toUpperCase().startsWith("F")?"F":"M",
-            permAddress: r2.permaddress||r2["permanent address"]||r2["ދާއިމީ"]||"",
-            island: r2.island||r2["ރަށް"]||"", currentAddress: r2.currentaddress||r2["current address"]||"",
-            phone: r2.phone||r2["mobile"]||r2["ފޯނު"]||"", email: r2.email||r2["Email Address"]||"",
-            categoryId: cid2, institution: r2.institution||r2["school"]||r2["ސްކޫލް"]||"",
-            instType: r2.insttype||r2["institution type"]||"", guardianName: r2.guardianname||r2["guardian"]||"",
-            guardianPhone: r2.guardianphone||r2["guardian phone"]||"" };
-        });
-        errBox.innerHTML = "";
-        preview.innerHTML = "";
-        const tbl = h("table.tbl");
-        const thead = h("thead", h("tr", ["#","ID","ނަން","DOB","ޖިންސް","ބައި","ފޯނު","Status"].map(x=>h("th",x))));
-        const tbody = h("tbody");
-        parsed.forEach((r2, i) => {
-          const cat2 = catMap[r2.categoryId];
-          const issues = [!r2.nid&&"ID ނެތް", !r2.name&&"ނަން ނެތް", !cat2&&"ބައި ދިމާނުވި"].filter(Boolean);
-          tbody.appendChild(h("tr", { style: { color: issues.length?"#ffa0a0":"" } },
-            h("td",i+1), h("td",r2.nid), h("td",r2.name), h("td",r2.dob), h("td",r2.gender==="F"?"A":"F"),
-            h("td", cat2?cat2.name:(r2.categoryId||"-")), h("td",r2.phone),
-            h("td", issues.length?h("span.tag.red",issues.join(", ")):h("span.tag.green","✔"))));
-        });
-        tbl.append(thead, tbody);
-        preview.appendChild(h("p.small.muted", `${parsed.length} ލައިން ކިޔެވިއްޖެ • ކުރިއަށް ދިޔުމުން ރަޖިސްޓަރީ ނަންބަރ ދޭ ދަރިވަރުންތައް ${S.settings.activeCompetitionId} ގެ ތެރެ ވައްދޭ.`));
-        preview.appendChild(tbl);
-      };
-      r.readAsText(file, "UTF-8");
-    }
-    input.onchange = e => { if (e.target.files[0]) parseFile(e.target.files[0]); };
-    const ok = await modal("📥 CSV ތެރެ ދަރިވަރުން ވެއްދުން",
-      h("div",
-        h("p.small.muted", "ކޮލަމްތައް (ތަރުތީބު ދޫ): nid, name, nameEn, dob, gender (M/F), permAddress, island, currentAddress, phone, email, categoryId, institution, instType, guardianName, guardianPhone"),
-        h("div.row", h("button.btn.primary", { onclick: () => input.click() }, "📂 ފައިލް ހޮވާ"),
-          h("button.btn.sm", { onclick: () => {
-            const url = "data:text/csv;charset=utf-8,%EF%BB%BFnid,name,nameEn,dob,gender,permAddress,island,currentAddress,phone,email,categoryId,institution,instType,guardianName,guardianPhone\nA123456,ﭔَﺎﻟِﺢَ ﻣُﺤَﻤَّﺪُ,Salih Mohamed,2008-05-14,M,ﻣَﺎﻟِﻴ,Male,ﻣَﺎﻟِﻴ,7777001,s@mail.mv,," + (cats[0]?cats[0].name:"") + ",ﻣُﺪَﺭَّﺳَﺔ,School,ﻭَﻟِﻲّ ﺍﻷَﻣْﺮ,7777000";
-            const a = document.createElement("a"); a.href=url; a.download="students_template.csv"; a.click();
-          } }, "⬇ ޓެމްޕްލޭޓް ކޮޕީ")),
-        input, errBox, preview),
-      [{ label: "ކެންސަލް" }, { label: "ވައްދާ", cls: "primary", onClick: async () => {
-        if (!parsed.length) { toast("ދަރިވަރެއް ނެތް", "warn"); return false; }
+  // ---------------------------------------------------------------- IMPORT (Excel .xlsx / .csv)
+  async function importStudents() {
+    const file = await new Promise(res => { const i = h("input", { type: "file", accept: ".csv,.xlsx,.xls,text/csv" }); i.onchange = () => res(i.files[0]); i.click(); });
+    if (!file) return;
+    let rows;
+    try { rows = await readSheet(file); } catch (e) { return toast("ފައިލު ކިޔޭކަށް ނުވި: " + e.message, "err", 7000); }
+    if (!rows.length) return toast("ފައިލުގައި ލިސްޓެއް ނެތް", "warn");
+    // header aliases (English keys from the template, Dhivehi labels, common Google Forms titles)
+    const ALIAS = {
+      nid: ["nid", "id", "national id", "id card", "id no", "އައިޑީ", "އައިޑީ ކާޑު ނަންބަރު", "އައިޑީ ކާޑު"],
+      name: ["name", "full name", "ނަން", "ފުރިހަމަ ނަން"], nameEn: ["nameen", "name en", "english name", "ނަން (އިނގިރޭސިން)"],
+      dob: ["dob", "date of birth", "birth date", "އުފަން ތާރީޚް", "އުފަން ތާރީޚް (yyyy-mm-dd)"], gender: ["gender", "sex", "ޖިންސު", "ޖިންސު (m/f)"],
+      permAddress: ["permaddress", "permanent address", "ދާއިމީ އެޑްރެސް"], island: ["island", "atoll and island", "އަތޮޅާއި ރަށް", "ރަށް"],
+      currentAddress: ["currentaddress", "current address", "މިހާރު އުޅޭ އެޑްރެސް"], phone: ["phone", "mobile", "contact", "ފޯނު"],
+      email: ["email", "email address", "އީމެއިލް"], category: ["category", "categoryid", "categoryname", "ބައި", "ބައިވެރިވާ ބައި"],
+      institution: ["institution", "school", "މުއައްސަސާ"], instType: ["insttype", "institution type", "މުއައްސަސާގެ ވައްތަރު"],
+      guardianName: ["guardianname", "guardian", "ބެލެނިވެރިޔާ"], guardianPhone: ["guardianphone", "guardian phone", "ބެލެނިވެރިޔާގެ ފޯނު"]
+    };
+    const norm = (t) => String(t || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const hdr = rows[0].map(norm);
+    const col = {};
+    Object.entries(ALIAS).forEach(([k, al]) => { const i = hdr.findIndex(x => al.includes(x)); if (i >= 0) col[k] = i; });
+    // the template has a second header row in Dhivehi — skip it
+    let body = rows.slice(1);
+    if (body.length && col.nid != null && norm(body[0][col.nid]).includes("އައިޑީ")) body = body.slice(1);
+    const catBy = (v) => { const t = norm(v); return cats.find(c => c.id === v || norm(c.name) === t) || cats.find(c => t && norm(c.name).includes(t)); };
+    const instKey = (v) => { const t = norm(v); const f = INST_TYPES.find(([k, dv]) => norm(k) === t || norm(dv) === t); return f ? f[0] : (v ? "Private" : ""); };
+    const parsed = body.map(r => {
+      const g = (k) => (col[k] != null ? String(r[col[k]] ?? "").trim() : "");
+      const cat = catBy(g("category"));
+      const gen = norm(g("gender"));
+      return { nid: normId(g("nid")), name: g("name"), nameEn: g("nameEn"), dob: toISO(g("dob")),
+        gender: /^(f|female|އަންހެން)/.test(gen) ? "F" : gen ? "M" : "", permAddress: g("permAddress"), island: g("island"),
+        currentAddress: g("currentAddress"), phone: g("phone"), email: g("email"), cat, catText: g("category"),
+        institution: g("institution"), instType: instKey(g("instType")), guardianName: g("guardianName"), guardianPhone: g("guardianPhone") };
+    }).filter(r => r.nid || r.name);
+    const bad = (r) => [!r.nid && "އައިޑީ ނެތް", !r.name && "ނަން ނެތް", !r.cat && "ބައި ނުފެނުނު"].filter(Boolean);
+    const good = parsed.filter(r => !bad(r).length);
+    const missing = ["nid", "name", "category"].filter(k => col[k] == null);
+    const ok = await modal("📥 ދަރިވަރުން ވެއްދުން — " + file.name, h("div",
+      missing.length ? h("p", { style: { color: "var(--red2)" } }, "މި ކޮލަމްތައް ނުފެނުނު: " + missing.join("، ") + " — ޓެމްޕްލޭޓުގައިވާ ކޮލަމް ނަންތައް ބޭނުންކުރައްވާ.") : null,
+      h("p.small.muted", `${parsed.length} ލައިން ކިޔުނު • ${good.length} ވައްދަން ތައްޔާރު • ${parsed.length - good.length} ގައި މައްސަލަ. ކުރިން ހުރި އައިޑީތައް ދޫކޮށްލާނެ.`),
+      h("div.tbl-wrap", { style: { maxHeight: "360px", overflow: "auto" } }, h("table.tbl",
+        h("thead", h("tr", ["#", "އައިޑީ", "ނަން", "އުފަން ތާރީޚް", "ޖިންސު", "ބައި", "ފޯނު", ""].map(x => h("th", x)))),
+        h("tbody", parsed.slice(0, 300).map((r, i) => { const b = bad(r); return h("tr",
+          h("td", i + 1), h("td.ltr", r.nid), h("td", r.name), h("td.ltr", r.dob), h("td", r.gender ? genderName(r.gender) : ""),
+          h("td", r.cat ? r.cat.name : r.catText), h("td.ltr", r.phone),
+          h("td", b.length ? h("span.tag.red", b.join("، ")) : h("span.tag.green", "✔"))); })))),
+      parsed.length > 300 ? h("p.small.muted", "ފުރަތަމަ 300 ލައިން ދައްކަނީ.") : null),
+      [{ label: "ކެންސަލް" }, { label: `ވައްދާ (${good.length})`, cls: "primary", onClick: async () => {
+        if (!good.length) { toast("ވައްދަން ތައްޔާރު ލައިނެއް ނެތް", "warn"); return false; }
         const cid = S.settings.activeCompetitionId;
-        let ok2 = 0, skip = 0;
-        for (const r2 of parsed) {
-          if (!r2.nid || !r2.name) { skip++; continue; }
-          const id = `${cid}__${r2.nid}`;
-          const ex = await getDoc(doc(db, "students", id));
-          if (ex.exists()) { skip++; continue; }
-          const cat2 = catMap[r2.categoryId] || cats[0];
-          const regNo = await runTransaction(db, async (tx) => {
-            const cRef = doc(db, "competitions", cid); const c = await tx.get(cRef);
-            const n = ((c.exists() && c.data().regCounter) || 0) + 1; tx.set(cRef, { regCounter: n }, { merge: true });
-            return `R${String((c.exists() && c.data().year) || new Date().getFullYear()).slice(-2)}-${String(n).padStart(4,"0")}`;
+        const existing = new Set(list.map(s => s.nid));
+        const todo = good.filter(r => !existing.has(r.nid));
+        if (!todo.length) { toast("ހުރިހާ އައިޑީއެއް ކުރިންވެސް ލިސްޓުގައި އެބައޮތް", "warn"); return false; }
+        const start = await runTransaction(db, async (tx) => {
+          const cRef = doc(db, "competitions", cid); const c = await tx.get(cRef);
+          const n = (c.exists() && c.data().regCounter) || 0; tx.set(cRef, { regCounter: n + todo.length }, { merge: true });
+          return { n, yy: String((c.exists() && c.data().year) || new Date().getFullYear()).slice(-2) };
+        });
+        for (let i = 0; i < todo.length; i += 400) {
+          const b = writeBatch(db);
+          todo.slice(i, i + 400).forEach((r, j) => {
+            const k = start.n + i + j + 1;
+            b.set(doc(db, "students", `${cid}__${r.nid}`), { competitionId: cid, regNo: `R${start.yy}-${String(k).padStart(4, "0")}`,
+              nid: r.nid, name: r.name, nameEn: r.nameEn, dob: r.dob, gender: r.gender, permAddress: r.permAddress, island: r.island,
+              currentAddress: r.currentAddress, phone: r.phone, email: r.email, categoryId: r.cat.id, categoryName: r.cat.name,
+              branch: r.cat.branch || "", ageGroup: r.cat.ageGroup || "", institution: r.institution, instType: r.instType,
+              guardianName: r.guardianName, guardianPhone: r.guardianPhone, photoThumb: "", status: "active", sessionId: "", order: 0,
+              checkin: null, source: "import", createdAt: serverTimestamp() });
           });
-          await setDoc(doc(db, "students", id), { competitionId: cid, regNo, nid: r2.nid, name: r2.name, nameEn: r2.nameEn, dob: r2.dob, gender: r2.gender,
-            permAddress: r2.permAddress, island: r2.island, currentAddress: r2.currentAddress, phone: r2.phone, email: r2.email,
-            categoryId: cat2?cat2.id:"", categoryName: cat2?cat2.name:"", branch: cat2?cat2.branch:"", ageGroup: cat2?cat2.ageGroup:"",
-            institution: r2.institution, instType: r2.instType, guardianName: r2.guardianName, photoThumb: "",
-            status: "active", sessionId: "", order: 0, checkin: null, createdAt: serverTimestamp() });
-          ok2++;
+          await b.commit();
         }
-        toast(`✔ ${ok2} ދަރިވަރުން ވެއްދިއްޖެ${skip?" • "+skip+" ދޫކޮށްލި":""}`); return true;
+        audit("students_import", { count: todo.length, file: file.name });
+        toast(`✔ ${todo.length} ދަރިވަރުން ވެއްދިއްޖެ` + (good.length - todo.length ? ` • ${good.length - todo.length} ކުރިން ހުރި` : ""));
+        return true;
       } }], { wide: true });
     if (ok) load();
   }
@@ -734,20 +690,19 @@ export async function prints(view) {
         { t: "#", cls: "num", v: (r, i) => r.order || i + 1 },
         { t: "ފޮޓޯ", cls: "num", html: r => r.photoThumb ? `<img class="ph" src="${r.photoThumb}">` : "" },
         { t: "ނަން", v: r => r.name }, { t: "ރެޖި", v: r => r.regNo }, { t: "ID", v: r => r.nid },
-        { t: "ﻋُﻤُﺮ", v: r => r.ageGroup || "" }, { t: "ﺑَﺎﺉ / ﮔﻮﻓِﻲ", v: r => r.categoryName }, { t: "ﻣُﻌَﺎﺳَّﺴَﺎ", v: r => r.institution }], rows), { sub: sub(), landscape: true })),
-      btn("✍ ﺣُﻀُﻮﺭِﻱ ﺷِﻴﺖ", rows => printDoc("ﺣُﻀُﻮﺭِﻱ ﺷِﻴﺖ", tableHTML([
+        { t: "ޢުމުރުފުރާ", v: r => ageGroupName(r.ageGroup) }, { t: "ބައި / ގޮފި", v: r => r.categoryName }, { t: "މުއައްސަސާ", v: r => r.institution }], rows), { sub: sub(), landscape: true })),
+      btn("✍ ޙާޟިރީ ޝީޓް", rows => printDoc("ޙާޟިރީ ޝީޓް", tableHTML([
         { t: "#", cls: "num", v: (r, i) => r.order || i + 1 },
         { t: "ފޮޓޯ", cls: "num", html: r => r.photoThumb ? `<img class="ph" src="${r.photoThumb}">` : "" },
-        { t: "ﻧَﻢ", v: r => r.name }, { t: "ID", v: r => r.nid }, { t: "ﺭَﺟِﻲ", v: r => r.regNo },
-        { t: "ﻓُﻮﻧُﻮ", v: r => r.phone }, { t: "ﺣَﺎﺿِﺮُ", v: () => "" },
-        { t: "ﺳﻮﺋِﻲ", html: () => "<div style='width:90px;height:22px'></div>" }], rows)
-        + sigBlock(["ﺳِﻜْﺮِﻳﺘَﺎﺭِﻱ", "ﺳُﻮﭙَﻭَﺍﻳﺰَﺭ"]), { sub: sub() })),
-      btn("📌 ﻧﻮﺗِﻴﺲ ﺑﻮﺭﺩ", async rows => {
-        const c = await import("../print.js").then(m => m); // already imported above
-        printDoc("ﻧﻮﺗِﻴﺲ ﺑﻮﺭﺩ", noticeBoardHTML(rows, sesById), { landscape: true, sub: sub() });
+        { t: "ނަން", v: r => r.name }, { t: "އައިޑީ", v: r => r.nid }, { t: "ރެޖި", v: r => r.regNo },
+        { t: "ފޯނު", v: r => r.phone }, { t: "ޙާޟިރު", v: () => "" },
+        { t: "ސޮއި", html: () => "<div style='width:90px;height:22px'></div>" }], rows)
+        + sigBlock(["ސެކްރެޓަރީ", "ސުޕަވައިޒަރ"]), { sub: sub() })),
+      btn("📌 ނޯޓިސް ބޯޑު", async rows => {
+        printDoc("ނޯޓިސް ބޯޑު", noticeBoardHTML(rows, sesById), { landscape: true, sub: sub() });
       }),
       btn("🪪 ދަރިވަރު ކާޑު", rows => printDoc("ދަރިވަރު ކާޑު", admitCardsHTML(rows, sesById))),
-      btn("📝 A5 ﺟَﺎﺝ ﺷِﻴﺖ (A5)", rows => {
+      btn("📝 ޖަޖުގެ ޝީޓް (A5)", rows => {
         const s = sesById[fSes.value];
         const judges = s && s.judges ? s.judges : [];
         const byCat = {};
@@ -755,15 +710,15 @@ export async function prints(view) {
         const html = judges.length
           ? judges.map(j => Object.entries(byCat).map(([cid, list]) => a5JudgeSheetHTML(list, catById(cid), s, [j])).join("")).join("")
           : Object.entries(byCat).map(([cid, list]) => a5JudgeSheetHTML(list, catById(cid), s)).join("");
-        printDoc("ﺟَﺎﺝ ﻣَﺎﻛُﺲ ﺷِﻴﺖ", html, { noHeader: false, sub: sub() + (s ? " • " + s.name : "") });
+        printDoc("ޖަޖުގެ މާކްސް ޝީޓް", html, { noHeader: false, sub: sub() + (s ? " • " + s.name : "") });
       }),
-      btn("📑 ﺟَﺎﺝ ﺳِﻴﺴَﻦ ﺟَﺪَﻭَﻝ", rows => {
+      btn("📑 ޖަޖުގެ ސެޝަން ޖަދުވަލު", rows => {
         const s = sesById[fSes.value]; const cat = catById(fCat.value || (rows[0] && rows[0].categoryId));
         const judges = s && s.judges ? s.judges : [{ slot: "1" }];
         const html = judges.map(j => sessionJudgeTableHTML(rows, cat, s, j.slot)).join("<div style='page-break-after:always'></div>");
-        printDoc("ﺟَﺎﺝ ﺳِﻴﺴَﻦ ﺷِﻴﺖ", html, { landscape: true, sub: sub() + (s ? " • " + s.name : "") });
+        printDoc("ޖަޖުގެ ސެޝަން ޖަދުވަލު", html, { landscape: true, sub: sub() + (s ? " • " + s.name : "") });
       })),
-    h("p.small.muted", "ﻧَﺘَﺎﺋِﺞ ﭘْﺮِﻳﻨْﺖ ﻛুﺮﻋّﭼ 'ﻧَﺘَﺎﺋِﺞ' ﭨَﺒُﻦ."),
-    h("div.row", h("span.small.muted", "ﺳﻮﺋِﻲ ﻟَﺎﻳِﻦ: "), h("span.small", signers().join("، ")))));
+    h("p.small.muted", "ނަތީޖާގެ ޝީޓްތައް (ވަނަތައް، ޖަލްސާގެ ޕްރިންޓް، ރުބްރިކް ރިޕޯޓް) ޕްރިންޓްކުރެވޭނީ 'ނަތީޖާ' ޓެބުން."),
+    h("div.row", h("span.small.muted", "ސޮއި ލައިން: "), h("span.small", signers().join("، ")))));
   sigN.onchange = () => view.querySelector(".row:last-child span.small:last-child").textContent = signers().join("، ");
 }

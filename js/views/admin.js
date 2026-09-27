@@ -2,7 +2,7 @@
 //  Super Admin: users, settings (mushaf, stars), competitions & categories, audit
 // ============================================================
 import {
-  S, db, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where, serverTimestamp, writeBatch, runTransaction,
+  S, db, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where, serverTimestamp,
   h, esc, toast, modal, confirmBox, field, select, spinner, empty, ROLES, roleName, audit, fmtDateTime,
   DEFAULT_RUBRIC, DEFAULT_SETTINGS, AGE_GROUPS, GENDERS, BRANCHES, loadCategories, loadSettings, cache
 } from "../core.js";
@@ -136,15 +136,8 @@ export async function settings(view) {
       h("div.grid3", field("މަތީ ހުސްބައި %", cal.top), field("ތިރީ ހުސްބައި %", cal.bottom), field("ވާތް / ކަނާތް ހުސްބައި %", cal.left)),
       h("div.grid3", field("ކަނާތް %", cal.right), field("ޞަފުޙާ 1-2 މަތި %", cal.p12top), field("ޞަފުޙާ 1-2 ތިރި %", cal.p12bottom)),
       h("button.btn.blue", { onclick: () => calibrate() }, "🔍 ކެލިބްރޭޝަން ޗެކްކުރޭ")),
-    h("div.row", h("button.btn.primary.lg", { onclick: save }, "💾 ސެޓިންގްސް ސޭވްކުރޭ")),
-    h("div.card", { style: { border: "2px dashed var(--gold)", marginTop: "18px" } },
-      h("h2", "🧪 ޓެސްޓިންގ — ޑަމީ ޑޭޓާ"),
-      h("p.small.muted", "ސިސްޓަމް ޓެސްޓްކުރަން 40 ދަރިވަރު، 4 ކެޓަގަރީ، 5 ޖަޖުންގެ ނަތީޖާ ހިމެނޭ ސެމްޕަލް ޑޭޓާ ވައްދެވިދާނެ. " +
-        "ހަދާ ފައިލް ވަކިން ޑައުންލޯޑްވެސް ކުރެވޭ. ﺗَﺤْﺬِﻳﺮ: ﺩَﺍﺋِﻤِﻲ ﺩَﺍﺋِﻤِﻲ ﺩَﺍﺋِﻤِﻲ ﻟِﻴ — ﻛُﺮِﻭَﻓِﻲ ﺍِﺿَﺎﻓَﺔ ﺩَﺍﺋِﻤِﻲ ﺩَﺍﺋِﻤِﻲ ﺩَﺍﺋِﻤِﻲ — ﻓَﺎﻳَِﻲ ﻛُﺮِﻭَﻓِﻲ Firestore ﮬَﺪَﻓِﻲ ﺩَﺍﺋِﻤِﻲ ﻧِﻤِﻲ ﻻ — ﺗَﺤْﺬِﻳﺮ: ﺍَﺣْﺘِﻴَﺎﻁ ﺍِﺭِﻩَﻝَﺍﺕِﻲ ﺩَﺍﺋِﻤِﻲ." +
-        " ﻭِﺍِﻱ ﻭَﻛِﻲ ﺳَﺎﺩَﺍ ﻣُﺒَﺎﺭَﺍﺓ ﺎَﻟِﺲ ﻛِﺎﻡ ﻛُﺮَﻓِﻲ."),
-      h("div.row",
-        h("button.btn.orange", { onclick: () => downloadDummy() }, "⬇ JSON ޑައުންލޯޑް"),
-        h("button.btn.red", { onclick: () => importDummy() }, "🔥 Firestore ތެރެ ވައްދާ (ﺩَﺍﺋِﻤِﻲ)"))));
+    h("div.row", h("button.btn.primary.lg", { onclick: save }, "💾 ސެޓިންގްސް ސޭވްކުރޭ")));
+
 
   function collect() {
     return {
@@ -164,156 +157,6 @@ export async function settings(view) {
     audit("settings_save", d); await loadSettings(); cache.categories = null; cache.sessions = null;
     toast("ސެޓިންގްސް ސޭވް ކުރެވިއްޖެ");
   }
-  // ---------------------------------------------------------------- DUMMY DATA
-  const DUMMY_CATS = [
-    { id:"dcat_u8_balaigen",   name:"ދަށް ތިލަ ފޮޅުވަތް — U8",   ageGroup:"U8",  branch:"balaigen", gender:"",
-      rubric:[{key:"thilawa",name:"ތިލާވަތު",max:40},{key:"tajweed",name:"ތަޖްވީދު",max:30},{key:"maqamat",name:"ތަރިހި",max:20},{key:"fasaha",name:"ފަޞާޙަތް",max:10}], order:1 },
-    { id:"dcat_u13_balaigen",  name:"ދެ ތިލަ ފޮޅުވަތް — U13",  ageGroup:"U13", branch:"balaigen", gender:"",
-      rubric:[{key:"thilawa",name:"ތިލާވަތު",max:30},{key:"tajweed",name:"ތަޖްވީދު",max:25},{key:"maqamat",name:"ތަރިހި",max:25},{key:"fasaha",name:"ފަޞާޙަތް",max:10},{key:"talaffuz",name:"ތަލައްފުޒު",max:10}], order:2 },
-    { id:"dcat_u18_nubalaigen",name:"ނުބަލައި — U18",             ageGroup:"U18", branch:"nubalaigen",gender:"",
-      rubric:[{key:"thilawa",name:"ތިލާވަތު",max:25},{key:"tajweed",name:"ތަޖްވީދު",max:25},{key:"maqamat",name:"ތަރިހި",max:20},{key:"sifa",name:"ﺻِﻔَﺔ",max:20},{key:"fasaha",name:"ފަޞާޙަތް",max:10}], order:3 },
-    { id:"dcat_hifz_open",     name:"ﺣِﻔْﻆ ﺍﻟْﻘُﺮْﺁﻥ — ﺍﻟﻔَﺘَﺢ", ageGroup:"Open",branch:"hifz",     gender:"",
-      rubric:[{key:"hifz",name:"ﺣِﻔْﻆ",max:50},{key:"tajweed",name:"ތަޖްވީދު",max:30},{key:"maqamat",name:"ﻣَﻘَﺎﻣَﺎﺕ",max:20}], order:4 }
-  ];
-  const DUMMY_NAMES = [
-    ["ﺁﻳِﺸَﺔ ﺃَﺣْﻤَﺪ","Aisha Ahmed","A110001","F","2018-03-12","Male","Aminiyya School","School","+9607770001"],
-    ["ﻓَﺎﻃِﻤَﺔ ﻋَﻠِﻲّ","Fathima Ali","A110002","F","2018-07-20","Hulhumale","Iskandhar School","School","+9607770002"],
-    ["ﻣُﻮﺳَﻰ ﻣُﺤَﻤَّﺪ","Moosa Mohamed","A110003","M","2017-11-05","Addu City","Ghiyaasuddin Int'l","School","+9607770003"],
-    ["ﺃَﺣْﻤَﺪ ﺳَﻌِﻴﺪ","Ahmed Saeed","A110004","M","2017-01-28","Male","Billabong High","School","+9607770004"],
-    ["ﻋَﺎﺋِﺸَﺔ ﻣُﺤَﻤَّﺪ","Aisha Mohamed","A110005","F","2016-09-14","Naifaru","Maafannu Middle","School","+9607770005"],
-    ["ﺃَﻣِﻴﻨَﺔ ﺣَﺴَﻦ","Aminath Hassan","A110006","F","2013-04-03","Male","Aminiyya School","School","+9607770006"],
-    ["ﻋَﺒْﺪُﺍﻟﻠَّﻪ ﻣُﺤَﻤَّﺪ","Abdulla Mohamed","A110007","M","2013-08-19","Hulhumale","Iskandhar School","School","+9607770007"],
-    ["ﺣَﺴَﻦ ﺃَﺣْﻤَﺪ","Hassan Ahmed","A110008","M","2012-12-25","Fuvahmulah","Ameer Ahmed School","School","+9607770008"],
-    ["ﻣَﺮْﻳَﻢ ﻋَﻠِﻲّ","Mariyam Ali","A110009","F","2013-02-07","Male","IUM","University","+9607770009"],
-    ["ﺇِﺑْﺮَﺍﻫِﻴﻢ ﺣَﺴَﻦ","Ibrahim Hassan","A110010","M","2012-06-15","Kulhudhuffushi","Fiyavathi School","School","+9607770010"],
-    ["ﺯَﻳْﻨَﺐ ﻣُﺤَﻤَّﺪ","Zainab Mohamed","A110011","F","2008-03-22","Male","Aminiyya School","School","+9607770011"],
-    ["ﻫَﺎﺟَﺮ ﺇِﺑْﺮَﺍﻫِﻴﻢ","Hajar Ibrahim","A110012","F","2008-09-11","Addu City","Ghiyaasuddin Int'l","School","+9607770012"],
-    ["ﻳُﻮﺳُﻒ ﻋَﻠِﻲّ","Yoosuf Ali","A110013","M","2007-07-04","Hulhumale","Iskandhar School","School","+9607770013"],
-    ["ﺧَﺪِﻳﺠَﺔ ﺃَﺣْﻤَﺪ","Khadheeja Ahmed","A110014","F","2007-11-18","Male","Maafannu Middle","School","+9607770014"],
-    ["ﻋُﻤَﺮ ﻣُﺤَﻤَّﺪ","Umar Mohamed","A110015","M","2006-01-30","Naifaru","IUM","University","+9607770015"],
-    ["ﺻَﺎﻟِﺢ ﺇِﺑْﺮَﺍﻫِﻴﻢ","Salih Ibrahim","A110016","M","2006-05-09","Maamigili","QuranClass Maamigili","QuranClass","+9607770016"],
-    ["ﻧَﻔِﻴﺴَﺔ ﺣَﺴَﻦ","Nafeesa Hassan","A110017","F","2007-08-27","Eydhafushi","Ameer Ahmed School","School","+9607770017"],
-    ["ﻋُﺜْﻤَﺎﻥ ﻋَﺒْﺪُﺍﻟﻠَّﻪ","Uthman Abdulla","A110018","M","2005-04-16","Male","Aminiyya School","School","+9607770018"],
-    ["ﺳُﻮﺩَﺓ ﻣُﻮﺳَﻰ","Sooda Moosa","A110019","F","2005-10-02","Fuvahmulah","Fiyavathi School","School","+9607770019"],
-    ["ﻋَﻠِﻲّ ﻣُﺤَﻤَّﺪ","Ali Mohamed","A110020","M","1998-02-14","Male","IUM","University","+9607770020"],
-    ["ﻓَﺮِﻳﺪَﺓ ﻋَﻠِﻲّ","Fareeda Ali","A110021","F","1995-06-30","Hulhumale","Private","Private","+9607770021"],
-    ["ﻣُﺤَﻤَّﺪ ﺃَﺣْﻤَﺪ","Mohamed Ahmed","A110022","M","2001-09-08","Male","IUM","University","+9607770022"],
-    ["ﺃَﺣْﻤَﺪ ﺭَﺷِﻴﺪ","Ahmed Rasheed","A110023","M","1999-12-03","Addu City","QuranClass Addu","QuranClass","+9607770023"],
-    ["ﺷَﻬِﻴﺪَﺓ ﺣَﺴَﻦ","Shaheeda Hassan","A110024","F","2000-03-17","Male","Aminiyya School","School","+9607770024"],
-    ["ﻳُﻮﺳُﻒ ﻣُﺤَﻤَّﺪ","Yoosuf Mohamed","A110025","M","1997-07-22","Naifaru","Private","Private","+9607770025"],
-    ["ﻫُﺒَﻴْﺶَﺓ ﻋَﻠِﻲّ","Hubaisha Ali","A110026","F","2018-05-11","Male","Maafannu Middle","School","+9607770026"],
-    ["ﻋِﻴﺴَﻰ ﺃَﺣْﻤَﺪ","Eesa Ahmed","A110027","M","2017-08-03","Hulhumale","Iskandhar School","School","+9607770027"],
-    ["ﻓَﺪْﻭَﻯ ﻣُﺤَﻤَّﺪ","Fadwa Mohamed","A110028","F","2018-01-19","Male","Aminiyya School","School","+9607770028"],
-    ["ﻋَﺒْﺪُﺍﻟﻌَﺰِﻳﺰ ﻋَﻠِﻲّ","Abdulaziz Ali","A110029","M","2016-11-07","Fuvahmulah","Ameer Ahmed School","School","+9607770029"],
-    ["ﺃَﻣَﻞ ﺣَﺴَﻦ","Amal Hassan","A110030","F","2017-04-25","Addu City","Ghiyaasuddin Int'l","School","+9607770030"],
-    ["ﺳَﻌِﻴﺪ ﻣُﺤَﻤَّﺪ","Saeed Mohamed","A110031","M","2012-10-13","Male","Maafannu Middle","School","+9607770031"],
-    ["ﺳَﻠِﻴﻤَﺔ ﻋَﻠِﻲّ","Saleema Ali","A110032","F","2013-03-28","Hulhumale","IUM","University","+9607770032"],
-    ["ﺃَﺑُﻮﺑَﻜْﺮ ﺃَﺣْﻤَﺪ","Aboobakuru Ahmed","A110033","M","2012-07-06","Eydhafushi","Fiyavathi School","School","+9607770033"],
-    ["ﺃَﺳِﻴﺮَﺓ ﻣُﺤَﻤَّﺪ","Aseera Mohamed","A110034","F","2013-12-21","Male","Aminiyya School","School","+9607770034"],
-    ["ﺷَﻬِﻴﺪ ﻋَﻠِﻲّ","Shaheed Ali","A110035","M","2011-09-10","Naifaru","Iskandhar School","School","+9607770035"],
-    ["ﺭُﻗَﻴَّﺔ ﺃَﺣْﻤَﺪ","Rugiyya Ahmed","A110036","F","2007-02-14","Male","Ghiyaasuddin Int'l","School","+9607770036"],
-    ["ﻋُﺒَﻴْﺪِﺍﻟﻠَّﻪ ﺣَﺴَﻦ","Ubaidulla Hassan","A110037","M","2006-06-30","Addu City","QuranClass Addu","QuranClass","+9607770037"],
-    ["ﺧَﺎﻟِﺪَﺓ ﻣُﺤَﻤَّﺪ","Khaleeda Mohamed","A110038","F","2008-10-05","Male","Aminiyya School","School","+9607770038"],
-    ["ﻳَﺤْﻴَﻰ ﻋَﻠِﻲّ","Yahya Ali","A110039","M","2005-01-23","Hulhumale","IUM","University","+9607770039"],
-    ["ﺣَﻔِﻴﻈَﺔ ﺣَﺴَﻦ","Hafeeza Hassan","A110040","F","2000-08-18","Male","Private","Private","+9607770040"]
-  ];
-  const CAT_IDX = [0,0,0,0,0,0,0,0,0,0, 1,1,1,1,1,1,1,1,1,1, 2,2,2,2,2,2,2,2,2,2, 3,3,3,3,3,3,3,3,3,3];
-  const JUDGE_NAMES = ["ﺃَﺑُﻮﺑَﻜْﺮ ﺳَﻌِﻴﺪ","ﻋَﻠِﻲّ ﺣَﺴَﻦ","ﻫَﺎﺭُﻭﻥ ﻋَﺒْﺪُﺍﻟﻠَّﻪ","ﻓَﻮْﺯَﺓ ﻣُﺤَﻤَّﺪ","ﺷَﺎﻓِﻲ ﺇِﺑْﺮَﺍﻫِﻴﻢ"];
-  const ISLAND_ADDR = n => ["ﻙ.ﻣَﺎﻟِﻲ","ﻩ.ﮬُﻠُﻬُﻤَﺎﻟِﻲ","ﺍَﺩُﻭ ﺳِﻴﺘِﻲ","ﻓُﻮﺍﻫِﻤُﻠَﻪ","ﻧَﻴﻔَﺎﺭُ"][n%5];
-  const SCORES = [0.96,0.93,0.90,0.87,0.85,0.92,0.89,0.86,0.94,0.88,0.91,0.84,0.95,0.88,0.87,0.90,0.83,0.92,0.86,0.94,0.89,0.85,0.91,0.88,0.93,0.84,0.90,0.87,0.92,0.86,0.93,0.88,0.95,0.84,0.89,0.91,0.86,0.93,0.88,0.90];
-  const JVAR  = [[0.98,0.97,1.0,0.98,0.97],[0.95,0.99,0.97,0.96,0.98],[1.0,0.96,0.98,0.97,0.99],[0.97,0.98,0.96,1.0,0.95]];
-
-  function buildDummy(compId, year) {
-    const sessions = DUMMY_CATS.map((c,i) => ({
-      id: `dses_${c.id}`, competitionId: compId, name: `ﺟَﻠْﺴَﺔ ${i+1} — ${c.name}`,
-      date: `${year}-11-0${i+2}`, time: "09:00", venue: `Hall ${i+1}, Islamic Centre`,
-      categoryId: c.id, status: "closed", order: [],
-      judges: JUDGE_NAMES.map((jn,j) => ({ slot:j+1, name:jn, email:`judge${j+1}@ium.edu.mv` })), chiefs: []
-    }));
-    const students = [], results = [], scores = [];
-    DUMMY_NAMES.forEach(([name,nameEn,nid,gender,dob,island,inst,itype,phone], idx) => {
-      const ci = CAT_IDX[idx]; const c = DUMMY_CATS[ci]; const ses = sessions[ci];
-      const id = `${compId}__${nid}`; const reg = `R${String(year).slice(-2)}-${String(idx+1).padStart(4,"0")}`;
-      const stu = { id, competitionId:compId, regNo:reg, nid, name, nameEn, dob, gender,
-        permAddress:`${ISLAND_ADDR(idx)}، ﺩ.ﺍَﻣُﻮﻭ ﺭ`, island, currentAddress:`ﻙ.ﻣَﺎﻟِﻲ`, phone, email:`${nid.toLowerCase()}@mail.mv`,
-        categoryId:c.id, categoryName:c.name, branch:c.branch, ageGroup:c.ageGroup,
-        institution:inst, instType:itype, guardianName:`ﻭَﻟِﻲّ ${nameEn.split(" ")[1]}`, guardianPhone:phone,
-        photoThumb:"", status:"active", sessionId:ses.id, order:idx%10+1, checkin:true };
-      students.push(stu);
-      ses.order.push(id);
-      const base = SCORES[idx];
-      const jTotals = JUDGE_NAMES.map((_,j) => {
-        const jv = JVAR[ci][j]; const tot = c.rubric.reduce((a,r) => a + Math.round(r.max*base*jv*100)/100, 0);
-        const sc = { id:`${compId}_${ses.id}_${nid}_j${j+1}`, competitionId:compId, sessionId:ses.id,
-          studentId:id, studentName:name, regNo:reg, nid, categoryId:c.id, categoryName:c.name,
-          judgeSlot:j+1, judgeName:JUDGE_NAMES[j],
-          criteria:Object.fromEntries(c.rubric.map(r=>[r.key, Math.round(r.max*base*jv*100)/100])),
-          rubric:c.rubric, total:Math.round(tot*100)/100, errors:[], note:"", savedAt:new Date().toISOString() };
-        scores.push(sc); return sc.total;
-      });
-      const sorted = [...jTotals].sort((a,b)=>a-b);
-      const final = Math.round(sorted.slice(1,4).reduce((a,v)=>a+v,0)/3*100)/100;
-      const maxTotal = c.rubric.reduce((a,r)=>a+r.max,0);
-      const pct = final/maxTotal;
-      const stars = pct>=0.95?5:pct>=0.9?4:pct>=0.85?3:pct>=0.75?2:1;
-      results.push({ id:`${compId}_${ses.id}_${nid}`, competitionId:compId, sessionId:ses.id, studentId:id,
-        name, nameEn, regNo:reg, nid, gender, ageGroup:c.ageGroup, island, institution:inst,
-        categoryId:c.id, categoryName:c.name, final, stars, published:true,
-        sessionName:ses.name, sessionDate:ses.date,
-        judges:scores.filter(sc=>sc.studentId===id) });
-    });
-    return { categories:DUMMY_CATS, sessions, students, results, scores };
-  }
-
-  function downloadDummy() {
-    const cid = compSel.value || "demo_comp_2026";
-    const year = 2026;
-    const { categories, sessions, students, results, scores } = buildDummy(cid, year);
-    const out = JSON.stringify({ _meta:{ note:"RASFAHI Dummy Data", generated:new Date().toISOString() },
-      competition:{ id:cid, name:"ﺭَﺍﺳْﻔَﻬِﻲ ﻣُﺒَﺎﺭَﺍﺓ 2026", year, venue:"Islamic Centre, Male'", organizer:"IUM" },
-      categories, sessions, students, results, scores }, null, 2);
-    const a = document.createElement("a");
-    a.href = "data:application/json;charset=utf-8," + encodeURIComponent(out);
-    a.download = "rasfahi_dummy_data.json"; a.click();
-    toast("✔ rasfahi_dummy_data.json ޑައުންލޯޑް ފެށިއްޖެ");
-  }
-
-  async function importDummy() {
-    const cid = compSel.value;
-    if (!cid) return toast("ފުރަތަމަ ހިނގަމުންދާ މުބާރާތެއް ހޮވާ", "warn");
-    const year = (comps.find(c=>c.id===cid)||{}).year || 2026;
-    const ok = await confirmBox("ޑަމީ ޑޭޓާ ވެއްދުން",
-      `'${cid}' ތެރެ 40 ދަރިވަރު، 4 ކެޓަގަރީ، 5 ޖަޖުންގެ ނަތީޖާ ވައްދާ. ﻫَﺎﻻَﺕِ ﮬِﻲ ﺩَﺍﺋِﻤِﻲ ﻻ ﺍِﻣْﻜَﺎﻥ ﺩِﻴ ﺩَﺍﺋِﻤِﻲ ﺩَﺍﺋِﻤِﻲ ﺩَﺍﺋِﻤِﻲ — ﻛُﺮِﻭَﻓِﻲ ﺍِﺿَﺎﻓَﺔ.`,
-      "ވެއްދޭ", "red");
-    if (!ok) return;
-    toast("ލޯޑުވަނީ...");
-    const { categories, sessions, students, results, scores } = buildDummy(cid, year);
-    const batch = writeBatch(db);
-    categories.forEach(c => batch.set(doc(db,"categories",c.id),{...c,competitionId:cid,createdAt:serverTimestamp()}));
-    await batch.commit();
-    const b2 = writeBatch(db);
-    sessions.forEach(ses => b2.set(doc(db,"sessions",ses.id),{...ses,createdAt:serverTimestamp()}));
-    await b2.commit();
-    let done = 0;
-    for (let i=0; i<students.length; i+=10) {
-      const b3 = writeBatch(db);
-      students.slice(i,i+10).forEach(s => { const {id,...d}=s; b3.set(doc(db,"students",id),{...d,createdAt:serverTimestamp()}); });
-      await b3.commit(); done+=Math.min(10,students.length-i);
-    }
-    for (let i=0; i<scores.length; i+=20) {
-      const b4 = writeBatch(db);
-      scores.slice(i,i+20).forEach(sc => { const {id,...d}=sc; b4.set(doc(db,"scores",id),d); });
-      await b4.commit();
-    }
-    for (let i=0; i<results.length; i+=10) {
-      const b5 = writeBatch(db);
-      results.slice(i,i+10).forEach(r => { const {id,...d}=r; b5.set(doc(db,"results",id),{...d,createdAt:serverTimestamp()}); });
-      await b5.commit();
-    }
-    audit("dummy_import",{cid,count:students.length});
-    toast(`✔ ${students.length} ދަރިވަރު، ${results.length} ނަތީޖާ، ${scores.length} ސްކޯ Firestore ތެރެ ވެދިއްޖެ`);
-  }
-
   async function calibrate() {
     const d = collect().mushaf;
     const pIn = h("input", { type: "number", value: 3, min: 1, max: 604 });

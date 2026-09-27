@@ -68,10 +68,10 @@ export async function results(view) {
   const box = h("div");
   card.append(h("div.filters", fCat, fSes, fGen, fStar, fTop, sigN,
     h("button.btn", { onclick: () => printRanked() }, "🖨 ނަތީޖާ"),
-    h("button.btn.primary", { onclick: () => printCeremony() }, "🏅 ﺟَﻠْﺴَﺔُ ﺍﻟْﺨِﺘَﺎﻡ ﭘْﺮِﻳﻨْﺖ"),
+    h("button.btn.primary", { onclick: () => printCeremony() }, "🏅 ނަތީޖާ އިޢުލާނުކުރާ ޖަލްސާގެ ޕްރިންޓް"),
     h("button.btn", { onclick: () => exportCSV() }, "⬇ CSV"),
-    isAdmin() ? h("button.btn", { onclick: () => printFull() }, "📑 ﺭُﺑّْﺮِﻳﻚ ﺭِﭘُﻮﺭْﺕ") : null,
-    isAdmin() ? h("button.btn", { onclick: () => printJudgeSheets() }, "🗂 ﺟَﺎﺝ ﺷِﻴﺖ") : null), box);
+    isAdmin() ? h("button.btn", { onclick: () => printFull() }, "📑 ފުރިހަމަ ރުބްރިކް ރިޕޯޓް") : null,
+    isAdmin() ? h("button.btn", { onclick: () => printJudgeSheets() }, "🗂 ޖަޖު ޝީޓްތައް") : null), box);
   // rank within category
   const ranked = () => {
     const f = rows.filter(r => (!fCat.value || r.categoryId === fCat.value) && (!fSes.value || r.sessionId === fSes.value) &&
@@ -107,7 +107,7 @@ export async function results(view) {
         h("td", { html: starsHtml(r.stars) }),
         h("td", r.institution ? h("div.small.muted", r.institution) : "")));
     });
-    box.appendChild(h("div.tbl-wrap", h("table.tbl", h("thead", h("tr", ["ﻭَﻧَﺎ", "", "ﻧَﻢ", "ﺭَﺟِﻲ", "ID", "ﺳِﻴﺴَﻦ", "ﺟَﺎﺝ", "ﻓَﺎﻳِﻨَﻞ", "★", "ﻣُﻌَﺎﺳَّﺴَﺎ"].map(x => h("th", x)))), tb)));
+    box.appendChild(h("div.tbl-wrap", h("table.tbl", h("thead", h("tr", ["ވަނަ", "", "ނަން", "ރެޖި", "އައިޑީ", "ސެޝަން", "ޖަޖުން", "ފައިނަލް", "ތަރި", "މުއައްސަސާ"].map(x => h("th", x)))), tb)));
   }
   [fCat, fSes, fGen, fTop, fStar].forEach(x => x.onchange = draw);
   const sub2 = () => [fCat.value && (catById(fCat.value) || {}).name, fSes.value && sessionLabel(sessions.find(s => s.id === fSes.value)), fGen.value && genderName(fGen.value)].filter(Boolean).join(" • ");
@@ -139,14 +139,14 @@ export async function results(view) {
     printDoc("ޖަޖުންގެ މާކްސް ޝީޓް", sel.map(s => scoreSheetHTML(s, catById(s.categoryId))).join(""));
   }
   async function printCeremony() {
-    const list = ranked(); if (!list.length) return toast("ﻧَﺘَﺎﺋِﺞ ﻧœﺖ", "warn");
+    const list = ranked(); if (!list.length) return toast("ނަތީޖާއެއް ނެތް", "warn");
     const snap = await import("../core.js").then(m => m.getDoc(m.doc(m.db, "competitions", S.settings.activeCompetitionId || "-"))).catch(()=>null);
-    const comp = snap && snap.exists() ? { id: snap.id, ...snap.data() } : { name: "ﻗُﺮْآﻥِ ﻛَﺮِﻳﻢ ﻣُﺒَﺎﺭَﺍﺓ" };
+    const comp = snap && snap.exists() ? { id: snap.id, ...snap.data() } : { name: "ޤުރްއާން މުބާރާތް" };
     const byCat = {};
     list.forEach(r => (byCat[r.categoryId] = byCat[r.categoryId] || []).push(r));
     const topN = fTop.value ? +fTop.value : 0;
     const html = Object.entries(byCat).map(([, l]) => `<div class="page">${ceremonyHTML(l, comp, topN)}</div>`).join("");
-    printDoc("ﺟَﻠْﺴَﺔُ ﺍﻟْﺨِﺘَﺎﻡ", html, { sub: sub2(), landscape: true });
+    printDoc("ނަތީޖާ އިޢުލާނުކުރާ ޖަލްސާ", html, { sub: sub2(), landscape: true });
   }
   draw();
 }
