@@ -136,7 +136,8 @@ export async function control(view) {
         const qi = Math.max(0, Math.min(live.qIndex, qs.length - 1));
         const q = qs[qi];
         const card = h("div.card");
-        card.append(h("div.qbar", h("span.qn", `ސުވާލު ${qi + 1} / ${qn}`), h("span.grow", portionBar(q)),
+        card.append(h("div.qbar", h("span.qn", `ސުވާލު ${qi + 1} / ${qn}`),
+          (live.picks || [])[qi] ? h("span.tag.gold", `ނަންބަރު ${(live.picks || [])[qi]}`) : null, h("span.grow", portionBar(q)),
           h("span.light." + (live.light === "go" ? "go" : "stop"))));
         if (live.phase === "reading") {
           const more = qs.length < qn;

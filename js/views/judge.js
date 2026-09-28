@@ -12,6 +12,7 @@ import {
 import { loadQuran, renderPage, wordInfo, qLabelDv, qLabel, portion } from "../quran.js";
 import { JALI, JALI_TYPES, KHAFI_GROUPS, khafiInfo, errLabel } from "../tajweed.js";
 import { printDoc, scoreSheetHTML } from "../print.js";
+import { pickQuestion } from "../liveops.js";
 
 async function mySessions() {
   const snap = await getDocs(query(collection(db, "sessions"), where("judgeEmails", "array-contains", S.me.email)));
@@ -59,7 +60,7 @@ export async function live(view) {
       if (L && L.studentId && L.studentId !== curStudent) switchStudent(L.studentId);
       if (L && !L.studentId) { curStudent = ""; scoreDoc = null; D = null; }
       if (L && L.qIndex !== lastQ && L.qIndex >= 0 && L.phase === "reading") {
-        if (lastQ >= 0 && prev && prev.studentId === L.studentId) flash(`ސުވާލު ${L.qIndex + 1}`);
+        if (prev && prev.studentId === L.studentId) flash(`ނަންބަރު ${(L.picks || [])[L.qIndex] ?? ""} — ސުވާލު ${L.qIndex + 1}`);
         viewQ = L.qIndex; lastQ = L.qIndex;
       }
       if (L && prev && prev.light !== L.light && L.light === "go") beep(988, 150);
@@ -184,15 +185,34 @@ export async function live(view) {
       main.appendChild(h("div", { style: { marginBottom: "10px" } }, idCard(L.student)));
       if (!D) D = { errors: [], adj: {}, note: "" };
       const qs = L.questions || [];
-      if (L.phase === "grid") main.appendChild(h("div.card.center", { style: { padding: "18px" } },
-        h("div", { style: { fontSize: "18px", color: "var(--gold2)" } }, qs.length ? `ދަރިވަރު ${qs.length + 1} ވަނަ ސުވާލުގެ ނަންބަރު ހޮވަނީ...` : "ދަރިވަރު ނަންބަރު ހޮވަނީ..."),
-        h("div.small.muted", `${(L.picks || []).length} / ${L.qCount || 1}`)));
+      if (L.phase === "grid") {
+        // same grid as the student screen — a judge may open the number the student says
+        const picks = L.picks || [];
+        const gb = h("div.gridbox.judge-grid", (L.grid || []).map(g => {
+          const i = picks.indexOf(g.n);
+          const b = h("button" + (i >= 0 ? ".taken" : ""), { disabled: i >= 0 }, g.n, i >= 0 ? h("span.sub", "ސުވާލު " + (i + 1)) : null);
+          if (i < 0) b.onclick = async () => {
+            if (gb.dataset.busy) return; gb.dataset.busy = "1";
+            b.classList.add("picking"); gb.querySelectorAll("button").forEach(x => { if (x !== b) x.classList.add("dim"); });
+            const r = await pickQuestion(ses.id, g.n);
+            if (r !== "ok") { delete gb.dataset.busy; b.classList.remove("picking"); gb.querySelectorAll("button.dim").forEach(x => x.classList.remove("dim"));
+              if (r === "taken") toast("އެ ނަންބަރު ހޮވިފައި", "warn"); else if (r === "full") toast("ސުވާލުގެ ޢަދަދު ހަމަވެއްޖެ", "warn"); }
+          };
+          return b;
+        }));
+        main.appendChild(h("div.card",
+          h("div.row.between", h("h3", { style: { margin: 0 } }, qs.length ? `${qs.length + 1} ވަނަ ސުވާލުގެ ނަންބަރު` : "ދަރިވަރު ނަންބަރު ހޮވަނީ"),
+            h("span.tag.gold", `${picks.length} / ${L.qCount || 1}`)),
+          h("p.small.muted", "ދަރިވަރު ބުނާ ނަންބަރަށް މިތަނުން ފިއްތާލެވޭނެ. ފިތާލުމާއެކު ދަރިވަރުގެ ސްކްރީނުގައިވެސް އެ ނަންބަރު ފެނި، ސުވާލު ހުޅުވޭނެ."),
+          gb));
+      }
       if (!qs.length) { if (L.phase !== "grid") main.appendChild(h("div.card", empty("ސުވާލު ނެތް"))); }
       else {
         if (viewQ >= qs.length) viewQ = qs.length - 1;
         const q = qs[viewQ];
         main.appendChild(h("div.qbar",
           h("span.qn", `ސުވާލު ${viewQ + 1} / ${L.qCount || qs.length}`),
+          (L.picks || [])[viewQ] ? h("span.tag.gold", `ނަންބަރު ${(L.picks || [])[viewQ]}`) : null,
           h("div.qtabs", qs.map((x, i) => h("button" + (i === viewQ ? ".view" : "") + (i === L.qIndex ? ".cur" : ""), { onclick: () => { viewQ = i; draw(); } },
             `${i + 1}${i === L.qIndex ? " ●" : ""}`))),
           h("span.grow", portionEl(q, L.branch === "hifz")),
