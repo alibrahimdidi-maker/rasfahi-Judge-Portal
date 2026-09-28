@@ -35,25 +35,29 @@ export async function live(view) {
   const all = await mySessions();
   const open = all.filter(s => s.status !== "closed");
   if (!open.length) return view.appendChild(h("div.card", empty("ތިބާ ޖަޖަކަށް ހަމަޖައްސާފައިވާ ހުޅުވިފައިވާ ސެޝަނެއް ނެތް")));
-  const today = new Date().toISOString().slice(0, 10);
-  const def = (open.find(s => s.status === "live") || open.find(s => s.date === today) || open[open.length - 1]).id;
-  const pick = select(open.map(s => [s.id, sessionLabel(s)]), sessionStorage.getItem("jSes") || def);
+  const { datedSessionPicker, rosterPanel } = await import("../roster.js");
   const body = h("div");
-  view.append(h("div.row", { style: { marginBottom: "10px" } }, h("b", "ސެޝަން:"), h("div.grow", pick)), body);
-  pick.onchange = () => { sessionStorage.setItem("jSes", pick.value); run(); };
   let stop = [];
+  const pick = datedSessionPicker(open, "jSes", () => run());
+  view.append(h("div.card", pick.el), body);
   run();
 
   function run() {
     stop.forEach(u => u()); stop = [];
-    const ses = open.find(s => s.id === pick.value) || open[0];
+    const ses = pick.current();
+    body.innerHTML = "";
+    if (!ses) return body.appendChild(h("div.card", empty("ދުވަހާއި ސެޝަން ހޮއްވަވާ")));
     const me = (ses.judges || []).find(j => j.email === S.me.email) || { slot: "?", name: S.me.name };
     let L = null, scoreDoc = null, curStudent = "", viewQ = 0, lastQ = -1, lastSeq = null;
     let D = null; // working draft {errors, adj, note}
     let tapT = null, tapW = null;
-    body.innerHTML = "";
     const head = h("div"), main = h("div"), side = h("div");
-    body.append(head, h("div.judge-layout", main, side));
+    // the session list — same numbers as the paper on the table
+    const rp = rosterPanel(ses, { comment: true, live: () => L, compact: true });
+    stop.push(() => rp._stop && rp._stop());
+    const listBox = h("details.card.judge-roster", h("summary", h("b", `📋 ސެޝަން ލިސްޓު (${(ses.roster || []).length})`),
+      h("span.small.muted", "  — މޭޒުމަތީގެ ޝީޓާ ހަމަ އެއް ތަރުތީބު")), rp);
+    body.append(head, listBox, h("div.judge-layout", main, side));
 
     stop.push(sub(onSnapshot(doc(db, "live", ses.id), s => {
       const prev = L; L = s.exists() ? s.data() : null;
@@ -146,6 +150,24 @@ export async function live(view) {
       tapT = setTimeout(() => { tapT = null; tapW = null; khafiPop(w); }, 300);
     }
 
+    // 📝 draft: kept on the server, can be changed until the final save
+    async function saveDraftServer() {
+      const { crit, total } = compute();
+      const id = scoreId(ses.id, curStudent, S.me.email);
+      const st = L.student || {};
+      const data = { criteria: crit, adj: D.adj || {}, total, errors: D.errors || [], note: D.note || "", locked: false, draft: true, draftAt: serverTimestamp(),
+        questions: L.questions || [], rubric: rubric() };
+      try {
+        if (scoreDoc) await updateDoc(doc(db, "scores", id), data);
+        else await setDoc(doc(db, "scores", id), { ...data, competitionId: S.settings.activeCompetitionId, sessionId: ses.id, sessionName: ses.name, sessionDate: ses.date,
+          studentId: curStudent, studentName: st.name, regNo: st.regNo, nid: st.nid, categoryId: L.categoryId, categoryName: L.categoryName,
+          judgeEmail: S.me.email, judgeName: me.name, judgeSlot: me.slot, chiefEmail: ses.chiefEmail, amendments: [], createdAt: serverTimestamp() });
+        scoreDoc = { ...(scoreDoc || {}), ...data };
+        await setDoc(doc(db, "judgeStatus", `${ses.id}__${S.me.email}`), { sessionId: ses.id, email: S.me.email, name: me.name, slot: me.slot, studentId: curStudent, saved: false, draft: true, total, at: serverTimestamp() });
+        toast("📝 ޑްރާފްޓް ސޭވްކުރެވިއްޖެ — ފައިނަލް ސޭވް ކުރުމާ ހަމައަށް ބަދަލުކުރެވޭނެ");
+        draw();
+      } catch (e) { toast("ޑްރާފްޓް ސޭވް ނުވި: " + e.message, "err", 7000); }
+    }
     async function save() {
       const { crit, total } = compute();
       const errs = D.errors || [];
@@ -153,7 +175,7 @@ export async function live(view) {
       if (!ok) return;
       const id = scoreId(ses.id, curStudent, S.me.email);
       const st = L.student || {};
-      const data = { criteria: crit, adj: D.adj || {}, total, errors: errs, note: D.note || "", locked: true, savedAt: serverTimestamp(),
+      const data = { criteria: crit, adj: D.adj || {}, total, errors: errs, note: D.note || "", locked: true, draft: false, savedAt: serverTimestamp(),
         questions: L.questions || [], rubric: rubric() };
       try {
         if (scoreDoc) await updateDoc(doc(db, "scores", id), { ...data, resavedAt: serverTimestamp() });
@@ -233,6 +255,7 @@ export async function live(view) {
       side.appendChild(card);
       card.appendChild(h("h3", "ރުބްރިކް ޝީޓް"));
       if (lk) card.appendChild(h("div.locked-banner", "🔒 ސޭވް ކުރެވި ލޮކް ވެފައި — ", fmtDateTime(scoreDoc.savedAt)));
+      else if (scoreDoc && !scoreDoc.locked && scoreDoc.draft) card.appendChild(h("div.locked-banner", { style: { borderColor: "var(--blue)", color: "#a9c2ff", background: "rgba(79,140,255,.12)" } }, "📝 ޑްރާފްޓް ސޭވްކޮށްފައި — ފައިނަލް ސޭވް ކުރުމުން ލޮކް ވާނެ"));
       else if (scoreDoc && !scoreDoc.locked) card.appendChild(h("div.locked-banner", { style: { borderColor: "#ff9800", color: "#ffc062", background: "#211504" } }, "🔓 ޗީފް ޖަޖު ބަދަލުކުރުމަށް ހުޅުވައިދީފި"));
       const src = lk ? scoreDoc : null;
       rubric().forEach(r => {
@@ -260,7 +283,8 @@ export async function live(view) {
       ecard.appendChild(note);
       side.appendChild(ecard);
       const act = h("div.row", { style: { gap: "8px" } });
-      if (!lk) act.appendChild(h("button.btn.green.lg", { style: { flex: 1 }, onclick: save, disabled: !(L.questions || []).length }, "💾 މާކްސް ސޭވްކުރޭ"));
+      if (!lk) act.append(h("button.btn.blue.lg", { onclick: saveDraftServer, disabled: !(L.questions || []).length }, "📝 ޑްރާފްޓް ސޭވް"),
+        h("button.btn.green.lg", { style: { flex: 1 }, onclick: save, disabled: !(L.questions || []).length }, "💾 ފައިނަލް ސޭވް (ލޮކް)"));
       else {
         act.appendChild(h("button.btn", { onclick: () => printDoc("ޖަޖުގެ މާކްސް ޝީޓް", scoreSheetHTML(scoreDoc, cat())) }, "🖨 ޝީޓް"));
         act.appendChild(h("button.btn.orange", { onclick: requestAmend }, "✎ އެމެންޑް ރިކުއެސްޓް"));

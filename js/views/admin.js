@@ -176,7 +176,7 @@ export async function settings(view) {
       mushaf: { base: mBase.value.trim(), pattern: mPat.value.trim() || "{p3}.png",
         ...Object.fromEntries(Object.entries(cal).map(([k, v]) => [k, +v.value])) },
       liveControllers: st.liveControllers || DEFAULT_SETTINGS.liveControllers,
-      theme: themeVal, qframe: frameVal
+      theme: themeVal, qframe: frameVal, scheduleLocked: !!S.settings.scheduleLocked
     };
   }
   async function save() {
@@ -312,8 +312,36 @@ export async function categories(view) {
     const tot = () => { const s = rub.reduce((a, r) => a + (+r.max || 0), 0); totEl.textContent = "ޖުމްލަ: " + s; totEl.style.color = s === 100 ? "#00e676" : "#ffb74d"; };
     sType.onchange = drawSyl;
     drawRub(); drawSyl();
+    // ---- category name from a dropdown: branch × age group (× gender), or whole Quran
+    const BR_DV = { mushaf: "ބަލައިގެން", hifz: "ނުބަލައި" };
+    const isFull = () => sType.value === "juz" && +(sFrom && sFrom.value) === 1 && +(sTo && sTo.value) === 30;
+    const autoName = () => `${isFull() ? "މުޅި ޤުރްއާން — " : ""}${BR_DV[br.value] || ""} — ${ageGroupName(ag.value)}${gd.value ? " — " + (GENDERS.find(g => g[0] === gd.value) || [0, ""])[1] : ""}`;
+    const nmSel = h("select",
+      h("option", { value: "auto" }, "🔄 ގޮފި، ޢުމުރުފުރާ އަދި ޖިންސުން ނަން ހަދާ"),
+      h("option", { value: "custom" }, "✍ ނަން އަމިއްލައަށް ލިޔުން"),
+      ...[["mushaf", false], ["hifz", false], ["hifz", true], ["mushaf", true]].map(([b, full]) =>
+        h("optgroup", { label: (full ? "މުޅި ޤުރްއާން — " : "") + BR_DV[b] },
+          ...AGE_GROUPS.map(([k, dv]) => h("option", { value: `p|${b}|${k}|${full ? 1 : 0}` }, `${full ? "މުޅި ޤުރްއާން — " : ""}${BR_DV[b]} — ${dv}`)))));
+    const presetOf = (name) => [...nmSel.querySelectorAll("option")].find(o => o.value.startsWith("p|") && o.textContent === name);
+    nmSel.value = !c0 ? "auto" : (presetOf(c.name) ? presetOf(c.name).value : "custom");
+    const applyName = () => {
+      const v = nmSel.value;
+      if (v === "auto") { nm.value = autoName(); nm.readOnly = false; return; }
+      if (v === "custom") return;
+      const [, b, a, full] = v.split("|");
+      br.value = b; ag.value = a;
+      if (full === "1") { sType.value = "juz"; c.syllabus = { type: "juz", from: 1, to: 30 }; drawSyl(); }
+      nm.value = [...nmSel.querySelectorAll("option")].find(o => o.value === v).textContent;
+    };
+    nmSel.onchange = applyName;
+    [br, ag, gd].forEach(x => x.addEventListener("change", () => { if (nmSel.value === "auto") nm.value = autoName(); }));
+    nm.addEventListener("input", () => { if (nmSel.value !== "custom") nmSel.value = "custom"; });
+    [fromBox, toBox, sType].forEach(x => x.addEventListener("change", () => { if (nmSel.value === "auto") nm.value = autoName(); }));
+    if (!c0) applyName();
+
     const ok = await modal(c.id ? "ބައި ބަދަލުކުރުން" : "އާ ބައެއް", h("div",
-      h("div.grid3", field("ބައިގެ ނަން", nm), field("ތަރުތީބު", ord), field("ގޮފި", br)),
+      h("div.grid2", field("ބައިގެ ނަން — ޑްރޮޕްޑައުނުން ހޮއްވަވާ", nmSel), field("ބައިގެ ނަން", nm)),
+      h("div.grid2", field("ތަރުތީބު", ord), field("ގޮފި", br)),
       h("div.grid3", field("ޢުމުރުފުރާ", ag), field("ޖިންސު", gd), h("label.row", openReg, "ރަޖިސްޓްރޭޝަން ފޯމުގައި ދައްކާ")),
       h("h3", "މުޤައްރަރު"),
       h("div.grid3", field("ހޮވާ ގޮތް", sType), fromBox, toBox), prev,

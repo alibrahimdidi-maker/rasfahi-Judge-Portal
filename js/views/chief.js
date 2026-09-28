@@ -63,20 +63,27 @@ export async function panel(view) {
   await loadCategories();
   const sessions = await chiefSessions();
   if (!sessions.length) return view.appendChild(h("div.card", empty("ތިބާ ޗީފް ޖަޖަކަށް ހަމަޖައްސާފައިވާ ސެޝަނެއް ނެތް")));
-  const def = (sessions.find(s => s.status === "live") || sessions.find(s => s.status !== "closed") || sessions[0]).id;
-  const pick = select(sessions.map(s => [s.id, sessionLabel(s) + (s.status === "closed" ? " ✔" : "")]), sessionStorage.getItem("cSes") || def);
+  const { datedSessionPicker, rosterPanel, notesPanel, syncRoster } = await import("../roster.js");
   const body = h("div");
-  view.append(h("div.row", { style: { marginBottom: "10px" } }, h("b", "ސެޝަން:"), h("div.grow", pick)), body);
-  pick.onchange = () => { sessionStorage.setItem("cSes", pick.value); run(); };
   let stop = [];
+  const pick = datedSessionPicker(sessions, "cSes", () => run());
+  view.append(h("div.card", pick.el), body);
   run();
   function run() {
     stop.forEach(u => u()); stop = [];
-    const ses = sessions.find(s => s.id === pick.value) || sessions[0];
+    const ses = pick.current();
+    body.innerHTML = "";
+    if (!ses) return body.appendChild(h("div.card", empty("ދުވަހާއި ސެޝަން ހޮއްވަވާ")));
     let L = null, scores = [], results = [], pending = 0, studs = [];
     body.innerHTML = "";
     const top = h("div"), grid = h("div"), resBox = h("div.card");
-    body.append(top, grid, resBox);
+    // the session list (same order as the sheets): attendance ✔ (chief may remove), comments, reschedule requests
+    if (!(ses.roster || []).length) syncRoster(ses);
+    const rp = rosterPanel(ses, { untick: true, comment: true, live: () => L, compact: false });
+    const np = notesPanel(ses, true);
+    stop.push(() => { rp._stop && rp._stop(); np._stop && np._stop(); });
+    const side = h("details.card.chief-roster", { open: "" }, h("summary", h("b", "📋 ސެޝަން ލިސްޓު، ހާޟިރީ އަދި ކޮމެންޓް")), h("div.grid2", rp, np));
+    body.append(top, grid, side, resBox);
     stop.push(sub(onSnapshot(doc(db, "live", ses.id), s => { L = s.exists() ? s.data() : null; draw(); })));
     stop.push(sub(onSnapshot(query(collection(db, "students"), where("sessionId", "==", ses.id)), s => {
       studs = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0)); draw(); }, () => {})));
@@ -119,6 +126,8 @@ export async function panel(view) {
       toast(`ނަތީޖާ ނިމިއްޖެ: ${fmt2(r.final)} (${r.stars} ތަރި)`);
     }
     async function closeSession() {
+      const drafts = scores.filter(x => !x.locked);
+      if (drafts.length && !await confirmBox("ފައިނަލް ސޭވް ނުކުރާ ޝީޓު", `${drafts.length} ޝީޓު އަދި ޑްރާފްޓް / ހުޅުވިފައި (${[...new Set(drafts.map(x => "ޖަޖު " + x.judgeSlot))].join("، ")}). ޖަޖުން ފައިނަލް ސޭވް ނުކޮށް ސެޝަން ނިންމަންތޯ؟`, "އާދެ، ނިންމާ", "red")) return;
       if (!await confirmBox("ސެޝަން ނިންމުން", "ސެޝަން ނިންމާލުމުން ނަތީޖާ ސުޕަވައިޒަރ އަދި އެޑްމިނަށް ފެންނާނެ. ނިންމަންތޯ؟", "✔ ނިންމާ", "red")) return;
       const b = writeBatch(db);
       b.update(doc(db, "sessions", ses.id), { status: "closed", closedAt: serverTimestamp(), closedBy: S.me.email });

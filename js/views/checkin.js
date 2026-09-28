@@ -4,14 +4,36 @@
 import { S, db, doc, getDoc, getDocs, updateDoc, collection, query, where, onSnapshot, serverTimestamp, h, toast, modal, confirmBox,
   select, empty, sub, idCard, loadSessions, sessionLabel, fmtDateTime, ageOn, audit, photoTag } from "../core.js";
 
+// ------------------------------------------------------------ SESSION LIST (default): date → session → the ordered list, tick ✔
 export async function checkin(view) {
-  const sessions = await loadSessions(true);
+  const { datedSessionPicker, rosterPanel } = await import("../roster.js");
+  const sessions = (await loadSessions(true)).filter(s => s.status !== "closed");
+  const holder = h("div");
+  let panel = null;
+  const modeBtn = h("button.btn", { onclick: () => { view.innerHTML = ""; searchMode(view, sessions); } }, "🔍 ނަމުން ހޯދާ");
+  const pick = datedSessionPicker(sessions, "ckSes2", (ses) => show(ses));
+  view.append(h("div.card", h("div.row.between", h("h2", { style: { margin: 0 } }, "ހާޟިރީ — ސެޝަން ލިސްޓު"), modeBtn), pick.el,
+    h("p.small.muted", "ލިސްޓާއި ޝީޓުގައި ހަމަ އެއް ތަރުތީބު ނަންބަރު. ✔ ޖެހުމަށްފަހު ނެގޭނީ ޗީފް ޖަޖަށް. އޮޅިގެން ޖެހިއްޖެނަމަ 💬 އިން ޗީފް ޖަޖަށް ކޮމެންޓް ކުރައްވާ.")), holder);
+  function show(ses) {
+    if (panel && panel._stop) panel._stop();
+    holder.innerHTML = "";
+    if (!ses) return holder.appendChild(h("div.card", empty("ދުވަހާއި ސެޝަން ހޮއްވަވާ")));
+    panel = rosterPanel(ses, { tick: true, comment: true });
+    holder.appendChild(h("div.card", panel));
+  }
+  show(pick.current());
+}
+
+// ------------------------------------------------------------ SEARCH (by name / ID / reg / phone)
+async function searchMode(view, sessionsAll) {
+  const sessions = sessionsAll || await loadSessions(true);
   const fSes = select([["", "ހުރިހާ ސެޝަނެއް"], ...sessions.filter(s => s.status !== "closed").map(s => [s.id, sessionLabel(s)])], sessionStorage.getItem("ckSes") || "");
   const fSt = select([["", "ހުރިހާ"], ["out", "ނާދޭ"], ["in", "ހާޟިރު"]], "");
   const q = h("input.ck-search", { placeholder: "🔍 ނަން، އައިޑީ ކާޑު، ރެޖި ނަންބަރު، ފޯނު...", autocomplete: "off" });
   const stats = h("div.row");
   const list = h("div.ck-list");
-  view.append(h("div.card", h("h2", "ދަރިވަރުން ހޯދުމާއި ޗެކްއިން"), q, h("div.filters", { style: { marginTop: "10px" } }, fSes, fSt), stats), list);
+  view.append(h("div.card", h("div.row.between", h("h2", { style: { margin: 0 } }, "ދަރިވަރުން ހޯދުމާއި ޗެކްއިން"),
+    h("button.btn", { onclick: () => { view.innerHTML = ""; checkin(view); } }, "📋 ސެޝަން ލިސްޓު")), q, h("div.filters", { style: { marginTop: "10px" } }, fSes, fSt), stats), list);
   let studs = [];
   sub(onSnapshot(query(collection(db, "students"), where("competitionId", "==", S.settings.activeCompetitionId)), s => {
     studs = s.docs.map(d => ({ id: d.id, ...d.data() })); draw();
@@ -45,14 +67,16 @@ export async function checkin(view) {
           h("div", "ސެޝަން: " + sesName(s.sessionId) + (s.order ? " • ތަރުތީބު #" + s.order : "")),
           s.checkin ? h("div.tag.green", "✔ ހާޟިރުވި: " + fmtDateTime(s.checkin.at) + " — " + (s.checkin.by || "")) : null))),
       [{ label: "ބަންދު" }, s.checkin
-        ? { label: "ޗެކްއިން ބާޠިލުކުރޭ", cls: "red", value: "undo" }
+        ? { label: "💬 އޮޅިގެން — ޗީފް ޖަޖަށް", cls: "orange", value: "note" }
         : { label: "✔ ހާޟިރު (ޗެކްއިން)", cls: "green", value: "in" }], { wide: true });
+    const ses = sessions.find(x => x.id === s.sessionId);
+    const { markPresent, addNote } = await import("../roster.js");
     if (r === "in") {
-      await updateDoc(doc(db, "students", s.id), { checkin: { at: new Date(), by: S.me.email, sessionId: s.sessionId || "" } });
-      audit("checkin", { id: s.id }); toast(s.name + " ހާޟިރު ✔");
-    } else if (r === "undo") {
-      if (!await confirmBox("ބާޠިލުކުރުން", "ޗެކްއިން ބާޠިލުކުރަންތޯ؟", "އާދެ", "red")) return;
-      await updateDoc(doc(db, "students", s.id), { checkin: null }); audit("checkin_undo", { id: s.id });
+      if (ses) await markPresent(ses, s);
+      else { await updateDoc(doc(db, "students", s.id), { checkin: { at: new Date(), by: S.me.email, sessionId: "" } }); toast(s.name + " ހާޟިރު ✔"); }
+    } else if (r === "note") {
+      if (!ses) return toast("މި ދަރިވަރު ސެޝަނަކަށް ލާފައެއް ނުވޭ", "warn");
+      await addNote(ses, s, "untick");
     }
   }
 }
@@ -66,16 +90,16 @@ export async function admit(view) {
   const { loadCategories, catById } = await import("../core.js");
   await loadCategories();
   const sessions = (await loadSessions(true)).filter(s => s.status !== "closed");
-  const pick = select([["", "— ސެޝަން ހޮވާ —"], ...sessions.map(s => [s.id, sessionLabel(s)])], sessionStorage.getItem("admSes") || "");
+  const { datedSessionPicker } = await import("../roster.js");
   const body = h("div");
-  view.append(h("div.card", h("h2", "ކިޔެވުމަށް ވެއްދުން"), pick), body);
   let stop = [];
-  pick.onchange = () => { sessionStorage.setItem("admSes", pick.value); run(); };
+  const pick = datedSessionPicker(sessions, "admSes", () => run());
+  view.append(h("div.card", h("h2", "ކިޔެވުމަށް ވެއްދުން"), pick.el), body);
   run();
   function run() {
     stop.forEach(u => u()); stop = [];
     body.innerHTML = "";
-    const ses = sessions.find(s => s.id === pick.value);
+    const ses = pick.current();
     if (!ses) return body.appendChild(empty(sessions.length ? "ސެޝަނެއް ހޮއްވަވާ" : "ހުޅުވިފައިވާ ސެޝަނެއް ނެތް"));
     let L = null, studs = [];
     stop.push(sub(onSnapshot(doc(db, "live", ses.id), s => { L = s.exists() ? s.data() : null; draw(); }, e => toast(e.message, "err"))));

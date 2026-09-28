@@ -23,19 +23,20 @@ export async function control(view) {
   const role = S.me.role;
   let sessions = (await loadSessions(true)).filter(s => s.status !== "closed");
   if (role === "chief") sessions = sessions.filter(s => s.chiefEmail === S.me.email);
-  const pickSes = select([["", "— ސެޝަން ހޮވާ —"], ...sessions.map(s => [s.id, sessionLabel(s)])], sessionStorage.getItem("liveSes") || "");
+  const { datedSessionPicker, syncRoster } = await import("../roster.js");
   const body = h("div");
-  view.append(h("div.card", h("div.row", h("h2", { style: { margin: 0 } }, "ލައިވް ކޮންޓްރޯލް — ޖަޖުންގެ މޭޒު"), h("div.grow", pickSes))), body);
   let unsubs = [];
-  pickSes.onchange = () => { sessionStorage.setItem("liveSes", pickSes.value); start(pickSes.value); };
-  if (pickSes.value && sessions.find(s => s.id === pickSes.value)) start(pickSes.value);
-  else body.appendChild(empty(sessions.length ? "ސެޝަނެއް ހޮއްވަވާ" : "ހުޅުވިފައިވާ ސެޝަނެއް ނެތް"));
+  const pickSes = datedSessionPicker(sessions, "liveSes", (ses) => ses ? start(ses.id) : (unsubs.forEach(u => u()), unsubs = [], body.innerHTML = "", body.appendChild(empty("ސެޝަނެއް ހޮއްވަވާ"))));
+  view.append(h("div.card", h("h2", { style: { margin: "0 0 8px" } }, "ލައިވް ކޮންޓްރޯލް — ޖަޖުންގެ މޭޒު"), pickSes.el), body);
+  if (pickSes.current()) start(pickSes.current().id);
+  else body.appendChild(empty(sessions.length ? "ދުވަހާއި ސެޝަން ހޮއްވަވާ" : "ހުޅުވިފައިވާ ސެޝަނެއް ނެތް"));
 
   function start(sid) {
     unsubs.forEach(u => u()); unsubs = [];
     body.innerHTML = ""; body.appendChild(spinner());
     const ses = sessions.find(s => s.id === sid);
     if (!ses) return;
+    syncRoster(ses);   // keep the judges' / tablet list identical to the current order
     let live = null, studs = [], jstat = {};
     const left = h("div.card"), right = h("div");
     body.innerHTML = ""; body.appendChild(h("div.live-layout", left, right));
