@@ -1,10 +1,15 @@
+/*!
+ * RASFAHI — Qur'an Competition Judging System
+ * Copyright (c) 2026 Ali Ibrahim Didi (AIDD) / Zaadh Holding. All rights reserved. Reg No: MED.03.IP.CR.26.EW5889
+ * Unauthorised copying, hosting, modification or redistribution is prohibited.
+ */
 // ============================================================
 //  LIVE CONTROL — judges' table (chief judge / secretary / admin)
 //  ▶ ވެއްދި → ދަރިވަރު ނަންބަރެއް ހޮވާ → 🟢 ފަށާ / 🔴 ހުއްޓާ → ދެން ނަންބަރު → ✔ ނިމުނު → ⏭ ދެން ދަރިވަރު
 // ============================================================
 import {
   S, db, doc, collection, query, where, onSnapshot, h, toast, confirmBox, select, spinner, empty, sub,
-  loadCategories, loadSessions, catById, sessionLabel, photoTag, idCard, beep, starsEl, BRANCHES
+  loadCategories, loadSessions, catById, sessionLabel, photoTag, idCard, beep, starsEl, BRANCHES, keepAwake
 } from "../core.js";
 import { loadQuran, qLabelDv, renderPage, renderQuestion, describeSyllabus, portion } from "../quran.js";
 import { gridPicker } from "../gridpick.js";
@@ -41,6 +46,43 @@ export async function control(view) {
     let live = null, studs = [], jstat = {};
     const left = h("div.card"), right = h("div");
     body.innerHTML = ""; body.appendChild(h("div.live-layout", left, right));
+    if (S.me.realRole === "superadmin") body.appendChild(trialCard());
+    keepAwake();
+
+    // ---- 🧪 full-competition trial with the sample data (super admin)
+    function trialCard() {
+      let running = false, stopFlag = false;
+      const status = h("div.trial-status", "—");
+      const count = select([["1", "1 ދަރިވަރު"], ["3", "3 ދަރިވަރުން"], ["5", "5 ދަރިވަރުން"], ["10", "10 ދަރިވަރުން"], ["999", "ސެޝަނުގެ ހުރިހާ ދަރިވަރުން"]], "3");
+      const speed = select([["3000", "🐢 ލަސްލަހުން"], ["1500", "⏱ އާދައިގެ"], ["600", "⚡ އަވަހަށް"]], "1500");
+      const skipMe = h("input", { type: "checkbox" });
+      const step = (t) => { status.textContent = t; };
+      const btns = [];
+      const B = (t, cls, fn) => { const b = h("button.btn" + cls, { onclick: async () => { if (running) return; running = true; btns.forEach(x => x.disabled = true); stopBtn.disabled = false;
+        try { await fn(); } catch (e) { toast(e.message || String(e), "err", 7000); } finally { running = false; btns.forEach(x => x.disabled = false); stopBtn.disabled = true; } } }, t); btns.push(b); return b; };
+      const stopBtn = h("button.btn.red", { disabled: true, onclick: () => { stopFlag = true; step("■ ހުއްޓަނީ... (މި ދަރިވަރު ނިމުމުން)"); } }, "■ ހުއްޓާ");
+      const T = () => import("../trial.js");
+      return h("div.card.trial-card", h("h3", "🧪 ފުލް މުބާރާތުގެ ޓްރަޔަލް (ނަމޫނާ ޑޭޓާ)"),
+        h("p.small.muted", "ދަރިވަރުން ވެއްދުމާއި، ނަންބަރު ހޮވުމާއި، ކިޔެވުމާއި، ޖަޖުން މާކްސް ދިނުމާއި، ނަތީޖާ ނިންމުމާއި، ދެން ދަރިވަރަށް ދިއުން ސިސްޓަމުން އަމިއްލައަށް ކުރާނެ. ދަރިވަރުގެ ސްކްރީނާއި ޖަޖުންގެ ސްކްރީން އެހެން ޓެބް / ޑިވައިސްއެއްގައި ހުޅުވައިގެން ބައްލަވާ."),
+        h("div.row", { style: { gap: "8px", flexWrap: "wrap" } },
+          B("✔ ހުރިހާ ދަރިވަރުން ހާޟިރު", "", async () => { const m = await T(); await m.trialPresentAll(ses); }),
+          B("🤖 އެހެން ޖަޖުންގެ މާކްސް (މި ދަރިވަރު)", ".blue", async () => { const m = await T(); const n = await m.trialJudgeSheets(ses, live, { skipMe: true }); step(`🤖 ${n} ޖަޖު ޝީޓު ސޭވްވެއްޖެ`); })),
+        h("div.row", { style: { gap: "8px", flexWrap: "wrap", marginTop: "10px" } }, count, speed,
+          h("label.row.small", skipMe, "ޖަޖު 1 (ތިބާ) ގެ މާކްސް ތިބާ ދޭނަން"),
+          B("▶▶ އޮޓޯ ޓްރަޔަލް", ".green", async () => {
+            const m = await T(); stopFlag = false;
+            const d = new Set((live && live.done) || []);
+            let list = studs.filter(x => !d.has(x.id));
+            if (live && live.studentId) list = [studs.find(x => x.id === live.studentId), ...list.filter(x => x.id !== live.studentId)].filter(Boolean);
+            list = list.slice(0, +count.value);
+            for (let i = 0; i < list.length && !stopFlag; i++) {
+              step(`(${i + 1}/${list.length}) ${list[i].name}`);
+              await m.trialRunStudent(ses, list[i], list.slice(i + 1), { speed: +speed.value, step: (t) => step(`(${i + 1}/${list.length}) ${t}`), stop: () => stopFlag, skipMe: skipMe.checked });
+            }
+            step(stopFlag ? "■ ހުއްޓިއްޖެ" : `✔ ޓްރަޔަލް ނިމުނީ — ${list.length} ދަރިވަރުން. '📊 ރިޕޯޓް' އާއި 'ނަތީޖާ' ބައްލަވާ.`);
+          }), stopBtn),
+        status);
+    }
 
     unsubs.push(sub(onSnapshot(doc(db, "live", sid), s => {
       const prev = live; live = s.exists() ? s.data() : null;
@@ -82,7 +124,10 @@ export async function control(view) {
       await writeLive(ses, { phase: "idle", studentId: "", student: null, grid: [], picks: [], questions: [], qIndex: -1, light: "stop" });
     }
 
-    function draw() {
+    // several updates arriving together are drawn once (keeps tablets smooth)
+    let _frame = 0;
+    function draw() { if (_frame) return; _frame = requestAnimationFrame(() => { _frame = 0; drawNow(); }); }
+    function drawNow() {
       // ---------- left: order of students
       const d = done();
       left.innerHTML = "";
@@ -101,7 +146,8 @@ export async function control(view) {
       right.appendChild(top);
       const judgesRow = h("div.judge-status", (ses.judges || []).map(j => {
         const js = jstat[j.email]; const ok = js && live && js.studentId === live.studentId && js.saved;
-        return h("span" + (ok ? ".ok" : ""), `ޖަޖު ${j.slot}: ${j.name} ${ok ? "✔ ސޭވް" : js && live && js.studentId === live.studentId ? "✎" : "…"}`);
+        const on = js && js.ping && js.ping.toMillis && Date.now() - js.ping.toMillis() < 70000;
+        return h("span" + (ok ? ".ok" : ""), { title: on ? "ކަނެކްޓްވެފައި" : "ކަނެކްޓްވެފައެއް ނުވޭ" }, `${on ? "🟢" : "⚪"} ޖަޖު ${j.slot}: ${j.name} ${ok ? "✔ ސޭވް" : js && live && js.studentId === live.studentId ? "✎" : "…"}`);
       }));
       const dispSel = select([["text", "ސްކްރީން: ޓެކްސްޓް"], ["image", "ސްކްރީން: މުޞްޙަފު PNG"]], (live && live.display) || S.settings.studentDisplay);
       dispSel.onchange = () => writeLive(ses, { display: dispSel.value });

@@ -1,3 +1,8 @@
+/*!
+ * RASFAHI — Qur'an Competition Judging System
+ * Copyright (c) 2026 Ali Ibrahim Didi (AIDD) / Zaadh Holding. All rights reserved. Reg No: MED.03.IP.CR.26.EW5889
+ * Unauthorised copying, hosting, modification or redistribution is prohibited.
+ */
 // ============================================================
 //  JUDGE dashboard — only the judge's own sheets
 //  • double-click / double-tap a word  → ލަޙްނު ޖަލީ (red, straight to the rubric sheet)
@@ -7,7 +12,7 @@
 import {
   S, db, doc, getDoc, getDocs, setDoc, updateDoc, addDoc, collection, query, where, onSnapshot, serverTimestamp,
   h, esc, toast, modal, confirmBox, promptBox, select, spinner, empty, audit, sub, idCard, fmt2, round, fmtDateTime,
-  loadCategories, catById, sessionLabel, scoreId, uid, beep, DEFAULT_RUBRIC
+  loadCategories, catById, sessionLabel, scoreId, uid, beep, DEFAULT_RUBRIC, safeSet, keepAwake
 } from "../core.js";
 import { loadQuran, renderPage, renderQuestion, wordInfo, qLabelDv, qLabel, portion } from "../quran.js";
 import { JALI, JALI_TYPES, KHAFI_GROUPS, khafiInfo, errLabel } from "../tajweed.js";
@@ -59,6 +64,10 @@ export async function live(view) {
     const listBox = h("details.card.judge-roster", h("summary", h("b", `📋 ސެޝަން ލިސްޓު (${(ses.roster || []).length})`),
       h("span.small.muted", "  — މޭޒުމަތީގެ ޝީޓާ ހަމަ އެއް ތަރުތީބު")), rp);
     body.append(head, listBox, h("div.judge-layout", main, side));
+    keepAwake();
+    // presence: the judges' table sees who is connected (🟢)
+    const ping = () => setDoc(doc(db, "judgeStatus", `${ses.id}__${S.me.email}`), { sessionId: ses.id, email: S.me.email, name: me.name, slot: me.slot, ping: serverTimestamp() }, { merge: true }).catch(() => {});
+    ping(); const pingT = setInterval(ping, 25000); stop.push(() => clearInterval(pingT));
 
     stop.push(sub(onSnapshot(doc(db, "live", ses.id), s => {
       const prev = L; L = s.exists() ? s.data() : null;
@@ -180,13 +189,13 @@ export async function live(view) {
       const data = { criteria: crit, adj: D.adj || {}, total, errors: D.errors || [], note: D.note || "", locked: false, draft: true, draftAt: serverTimestamp(),
         questions: L.questions || [], rubric: rubric() };
       try {
-        if (scoreDoc) await updateDoc(doc(db, "scores", id), data);
-        else await setDoc(doc(db, "scores", id), { ...data, competitionId: S.settings.activeCompetitionId, sessionId: ses.id, sessionName: ses.name, sessionDate: ses.date,
-          studentId: curStudent, studentName: st.name, regNo: st.regNo, nid: st.nid, categoryId: L.categoryId, categoryName: L.categoryName,
-          judgeEmail: S.me.email, judgeName: me.name, judgeSlot: me.slot, chiefEmail: ses.chiefEmail, amendments: [], createdAt: serverTimestamp() });
+        const r1 = scoreDoc ? await safeSet(`scores/${id}`, data, { update: true })
+          : await safeSet(`scores/${id}`, { ...data, competitionId: S.settings.activeCompetitionId, sessionId: ses.id, sessionName: ses.name, sessionDate: ses.date,
+            studentId: curStudent, studentName: st.name, regNo: st.regNo, nid: st.nid, categoryId: L.categoryId, categoryName: L.categoryName,
+            judgeEmail: S.me.email, judgeName: me.name, judgeSlot: me.slot, chiefEmail: ses.chiefEmail, amendments: [], createdAt: serverTimestamp() });
         scoreDoc = { ...(scoreDoc || {}), ...data };
-        await setDoc(doc(db, "judgeStatus", `${ses.id}__${S.me.email}`), { sessionId: ses.id, email: S.me.email, name: me.name, slot: me.slot, studentId: curStudent, saved: false, draft: true, total, at: serverTimestamp() });
-        toast("📝 ޑްރާފްޓް ސޭވްކުރެވިއްޖެ — ފައިނަލް ސޭވް ކުރުމާ ހަމައަށް ބަދަލުކުރެވޭނެ");
+        await safeSet(`judgeStatus/${ses.id}__${S.me.email}`, { sessionId: ses.id, email: S.me.email, name: me.name, slot: me.slot, studentId: curStudent, saved: false, draft: true, total, at: serverTimestamp() });
+        toast(r1.queued ? "📴 ނެޓް ނެތް — ޑްރާފްޓް ބްރައުޒަރުގައި ރައްކާކުރެވިއްޖެ" : "📝 ޑްރާފްޓް ސޭވްކުރެވިއްޖެ — ފައިނަލް ސޭވް ކުރުމާ ހަމައަށް ބަދަލުކުރެވޭނެ");
         draw();
       } catch (e) { toast("ޑްރާފްޓް ސޭވް ނުވި: " + e.message, "err", 7000); }
     }
@@ -200,14 +209,18 @@ export async function live(view) {
       const data = { criteria: crit, adj: D.adj || {}, total, errors: errs, note: D.note || "", locked: true, draft: false, savedAt: serverTimestamp(),
         questions: L.questions || [], rubric: rubric() };
       try {
-        if (scoreDoc) await updateDoc(doc(db, "scores", id), { ...data, resavedAt: serverTimestamp() });
-        else await setDoc(doc(db, "scores", id), { ...data, competitionId: S.settings.activeCompetitionId, sessionId: ses.id, sessionName: ses.name, sessionDate: ses.date,
-          studentId: curStudent, studentName: st.name, regNo: st.regNo, nid: st.nid, categoryId: L.categoryId, categoryName: L.categoryName,
-          judgeEmail: S.me.email, judgeName: me.name, judgeSlot: me.slot, chiefEmail: ses.chiefEmail, amendments: [], createdAt: serverTimestamp() });
-        await setDoc(doc(db, "judgeStatus", `${ses.id}__${S.me.email}`), { sessionId: ses.id, email: S.me.email, name: me.name, slot: me.slot, studentId: curStudent, saved: true, total, at: serverTimestamp() });
+        // works without internet too: a copy stays in this browser and is sent when the connection returns
+        const r1 = scoreDoc ? await safeSet(`scores/${id}`, { ...data, resavedAt: serverTimestamp() }, { update: true })
+          : await safeSet(`scores/${id}`, { ...data, competitionId: S.settings.activeCompetitionId, sessionId: ses.id, sessionName: ses.name, sessionDate: ses.date,
+            studentId: curStudent, studentName: st.name, regNo: st.regNo, nid: st.nid, categoryId: L.categoryId, categoryName: L.categoryName,
+            judgeEmail: S.me.email, judgeName: me.name, judgeSlot: me.slot, chiefEmail: ses.chiefEmail, amendments: [], createdAt: serverTimestamp() });
+        const r2 = await safeSet(`judgeStatus/${ses.id}__${S.me.email}`, { sessionId: ses.id, email: S.me.email, name: me.name, slot: me.slot, studentId: curStudent, saved: true, total, at: serverTimestamp() });
+        scoreDoc = { ...(scoreDoc || {}), ...data, locked: true };
         clearDraft(ses.id, curStudent);
         audit("score_save", { id, total });
-        toast("ސޭވް ކުރެވި ލޮކް ވެއްޖެ ✔");
+        if (r1.queued || r2.queued) toast("📴 ނެޓް ނެތް — މާކްސް މި ބްރައުޒަރުގައި ރައްކާކުރެވިއްޖެ. ނެޓް ލިބުމާއެކު ކްލައުޑަށް ފޮނުވޭނެ.", "warn", 8000);
+        else toast("ސޭވް ކުރެވި ލޮކް ވެއްޖެ ✔");
+        draw();
       } catch (e) { toast("ސޭވް ނުވި: " + e.message, "err", 7000); }
     }
     async function requestAmend() {
@@ -219,7 +232,10 @@ export async function live(view) {
       audit("amend_request", { st: curStudent }); toast("ޗީފް ޖަޖަށް ފޮނުވިއްޖެ");
     }
 
-    function draw() {
+    // several updates arriving together are drawn once (keeps tablets smooth)
+    let _frame = 0;
+    function draw() { if (_frame) return; _frame = requestAnimationFrame(() => { _frame = 0; drawNow(); }); }
+    function drawNow() {
       head.innerHTML = ""; main.innerHTML = ""; side.innerHTML = "";
       head.appendChild(h("div.row.between", { style: { marginBottom: "8px" } },
         h("div.row", h("span.tag.gold", `ޖަޖު ${me.slot}`), h("b", me.name)),

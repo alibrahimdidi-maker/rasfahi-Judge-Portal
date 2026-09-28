@@ -1,7 +1,12 @@
+/*!
+ * RASFAHI — Qur'an Competition Judging System
+ * Copyright (c) 2026 Ali Ibrahim Didi (AIDD) / Zaadh Holding. All rights reserved. Reg No: MED.03.IP.CR.26.EW5889
+ * Unauthorised copying, hosting, modification or redistribution is prohibited.
+ */
 // ============================================================
 //  TV SCREENS: student reading screen & waiting-room screen
 // ============================================================
-import { S, db, doc, getDoc, getDocs, collection, query, where, onSnapshot, h, esc, select, empty, sub, logout, starsHtml, beep, loadSessions, sessionLabel, todayISO } from "../core.js";
+import { S, db, doc, getDoc, getDocs, collection, query, where, onSnapshot, h, esc, select, empty, sub, logout, starsHtml, beep, loadSessions, sessionLabel, todayISO, keepAwake, prefetchImages } from "../core.js";
 import { loadQuran, renderPage, renderQuestion, questionPages, openingWords, pageImageURL, slotBand, pageSlotCount, arNum, qLabel } from "../quran.js";
 import { frameEl } from "../frames.js";
 
@@ -71,6 +76,7 @@ export async function studentScreen(view) {
     scr.append(top, bodyEl, lamp, standby);
     view.appendChild(scr);
     screenMenu(view, "scrStudentSes");
+    keepAwake();
     let prevLight = null, busy = false, prevL = null, curL = null, flashUntil = 0, flashN = 0, localTap = false, flashT = null;
     sub(onSnapshot(doc(db, "live", sid), s => {
       const L = s.exists() ? s.data() : null;
@@ -113,6 +119,9 @@ export async function studentScreen(view) {
       bodyEl.innerHTML = "";
       if (!L) return;                                   // screen off
       const qs = L.questions || [], qn = L.qCount || 1;
+      // mushaf pages of every grid question are loaded in the background, so a chosen page appears at once
+      if (L.phase === "grid" && (L.display || S.settings.studentDisplay) === "image")
+        prefetchImages((L.grid || []).flatMap(g => g.q ? questionPages(g.q).map(p => pageImageURL(p, S.settings.mushaf)) : []));
       if (L.phase === "grid" || Date.now() < flashUntil) {
         const flashing = L.phase !== "grid";
         const picks = flashing ? (L.picks || []).slice(0, -1) : (L.picks || []);
