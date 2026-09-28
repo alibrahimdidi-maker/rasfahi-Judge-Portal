@@ -546,3 +546,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .mushaf-page.tz, .mushaf-page.tz .w { font-family: 'Amiri Quran', 'Amiri', serif; }
 .mushaf-page.tz { line-height: 2.25; }
 .mushaf-page.tz .qline { overflow: visible; word-spacing: 0; }
+
+/* grid on the judges' screens + the rule line under the student grid */
+.gridbox button.picking { background: linear-gradient(180deg, #ffe082, #c9a443) !important; color: #2a1a00 !important; transform: scale(1.05); box-shadow: 0 0 16px rgba(255,224,130,.8); }
+.gridbox button.dim { opacity: .35; }
+.judge-grid button { font-size: 22px; min-height: 58px; }
+.grid-rule { margin-top: 2.6vh; font-size: 1.9vw; color: #fff; background: rgba(0,0,0,.28); border: 1px solid rgba(201,164,67,.45);
+  border-radius: 1.2vw; padding: 1vh 2.4vw; display: inline-block; }
+.grid-rule b { color: var(--gold2); font-size: 2.3vw; }
