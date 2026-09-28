@@ -736,3 +736,39 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .grant-code { margin: 10px 0; padding: 14px; border: 2px dashed var(--gold); border-radius: 12px; text-align: center; }
 .grant-code b { display: block; font-size: 38px; letter-spacing: 10px; color: var(--gold2); font-family: monospace; }
 .tbl.hist td { vertical-align: top; } .tbl.hist tr.hist-marks td { background: rgba(79,140,255,.07); }
+
+/* number grid for judges / live control (pick one or several) */
+.gp-info { margin: 4px 0 10px; color: var(--muted); font-size: 14px; }
+.gp-grid { display: grid; gap: 10px; }
+.gp-n { position: relative; min-height: 78px; border-radius: 14px; border: 2px solid var(--gold); background: linear-gradient(180deg, var(--panel2), var(--panel));
+  color: var(--gold2); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  transition: transform .08s, box-shadow .15s, background .15s; touch-action: manipulation; }
+.gp-n:hover:not(:disabled) { box-shadow: 0 0 14px rgba(236,208,131,.45); } .gp-n:active { transform: scale(.96); }
+.gp-num { font-size: 30px; font-weight: 900; font-family: 'Cinzel', serif; line-height: 1; }
+.gp-sub { font-size: 12px; min-height: 14px; }
+.gp-n.sel { background: linear-gradient(180deg, #ffe082, #c9a443); color: #2a1a00; border-color: #fff3c4; box-shadow: 0 0 16px rgba(255,224,130,.7); }
+.gp-n.queued { border-style: dashed; border-color: #ffc062; color: #ffc062; }
+.gp-n.taken { background: linear-gradient(180deg, #1c8a5c, #0f5e40); color: #eafff3; border-color: #7fe0b0; cursor: default; }
+.gp-act { margin-top: 12px; gap: 8px; }
+.scr-grid > button.queued { border-style: dashed; color: #ffc062; border-color: #ffc062; }
+/* judges: pick the letter */
+.letter-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 8px 0; direction: rtl; }
+.lchip { font-family: var(--quran); font-size: 30px; min-width: 56px; padding: 4px 10px; border-radius: 12px; border: 2px solid var(--line2); background: var(--panel2); color: var(--text); cursor: pointer; }
+.lchip.on { border-color: var(--gold); background: rgba(201,164,67,.2); color: var(--gold2); }
+.pop-letter { color: #ff6b6b; text-decoration: underline; text-underline-offset: 8px; }
+.letter-quick { display: grid; gap: 8px; margin: 8px 0 12px; }
+.lq { padding: 12px; border-radius: 12px; font-size: 16px; cursor: pointer; text-align: center; font-family: var(--ui); }
+.lq small { display: block; font-size: 12px; opacity: .85; }
+.lq.jali { background: rgba(255,77,94,.15); border: 2px solid var(--red); color: var(--red2); }
+.lq.khafi { background: rgba(255,159,28,.12); border: 2px solid var(--orange); color: #ffc062; }
+/* plan B marks desk */
+.manual-layout { display: grid; grid-template-columns: minmax(280px, 1fr) 2fr; gap: 14px; align-items: start; }
+@media (max-width: 900px) { .manual-layout { grid-template-columns: 1fr; } }
+.man-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.man-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border: 1px solid var(--line2); border-radius: 10px; background: var(--panel2); }
+.man-in { width: 90px; font-size: 20px; text-align: center; }
+.man-sum { margin: 10px 0; font-size: 18px; } .man-total { color: var(--gold2); font-size: 24px; }
+.man-errs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.man-krow { display: flex; align-items: center; gap: 8px; margin: 4px 0; } .man-krow > span { min-width: 110px; font-size: 13px; }
+.man-kgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 4px 14px; margin-top: 6px; }
+.man-sign { margin-top: 10px; padding: 10px; border: 2px dashed var(--gold); border-radius: 10px; font-size: 15px; }
