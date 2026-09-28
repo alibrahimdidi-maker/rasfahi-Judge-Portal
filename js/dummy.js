@@ -9,6 +9,39 @@ import {
   S, db, doc, getDocs, collection, query, where, writeBatch, serverTimestamp,
   loadCategories, loadSessions, cache, starsFor, round
 } from "./core.js";
+import { KHAFI_GROUPS, JALI_TYPES } from "./tajweed.js";
+
+// realistic mistakes for the sample sheets (so the report has something to show)
+const KHAFI_WEIGHT = { madd: 25, ghunna: 15, sifat: 12, makhraj: 12, nun: 10, waqf: 8, haraka: 8, tafkhim: 5, mim: 3, idgham: 1, hamz: 1 };
+const JUZ_FIRST_SURAH = [1, 2, 2, 2, 3, 4, 4, 5, 6, 7, 8, 9, 11, 12, 15, 17, 21, 23, 25, 27, 29, 33, 36, 39, 41, 46, 51, 58, 67, 78];
+function pickWeighted(r) {
+  const groups = KHAFI_GROUPS.filter(g => KHAFI_WEIGHT[g.key]);
+  const tot = groups.reduce((a, g) => a + KHAFI_WEIGHT[g.key], 0);
+  let x = r() * tot;
+  for (const g of groups) { x -= KHAFI_WEIGHT[g.key]; if (x <= 0) return g; }
+  return groups[0];
+}
+function sampleErrors(r, skill, qn) {
+  const n = Math.max(0, Math.round((1 - skill) * 22 * (0.6 + r() * 0.8)));
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const qIndex = Math.floor(r() * qn);
+    if (r() < 0.22) { const t = JALI_TYPES[Math.floor(r() * JALI_TYPES.length)];
+      out.push({ type: "jali", crit: "thilawa", ded: 1, sub: t.key, subDv: t.dv, subAr: t.ar, groupDv: "", qIndex }); }
+    else { const g = pickWeighted(r), it = g.items[Math.floor(r() * g.items.length)];
+      out.push({ type: "khafi", group: g.key, groupDv: g.dv, sub: it[0], subAr: it[1], subDv: it[2], crit: g.crit, ded: 0.5, qIndex }); }
+  }
+  return out;
+}
+function sampleQuestions(r, cat) {
+  const syl = cat.syllabus || { type: "juz", from: 30, to: 30 };
+  const a = syl.type === "juz" ? +syl.from || 30 : 30, b = syl.type === "juz" ? +syl.to || a : 30;
+  return Array.from({ length: Math.max(1, cat.qCount || 2) }, () => {
+    const juz = a + Math.floor(r() * (b - a + 1));
+    const surah = juz === 30 ? 78 + Math.floor(r() * 37) : JUZ_FIRST_SURAH[juz - 1];
+    return { juz, surah, ayahFrom: 1 + Math.floor(r() * 20), ayahTo: 0, page: 0 };
+  });
+}
 
 // ---------- sample names & places (Dhivehi + English) ----------
 const M_FIRST = [["ޢަލީ","Ali"],["އަޙްމަދު","Ahmed"],["މުޙައްމަދު","Mohamed"],["އިބްރާހީމް","Ibrahim"],["ޔޫސުފް","Yoosuf"],
@@ -109,12 +142,16 @@ export function buildStudents(count, cats, withMarks, rubOverride) {
     };
     if (withMarks) {
       const rub = rubOverride || (cat.rubric && cat.rubric.length ? cat.rubric : SAMPLE_RUBRIC);
-      const skill = 0.62 + r() * 0.36;                       // how good this reciter is
+      // how good this reciter is (small differences by gender / age / branch so the report shows something)
+      const skill = Math.min(0.98, 0.62 + r() * 0.32 + (female ? 0.015 : 0) + (["U16", "U19", "U21", "GEN"].includes(cat.ageGroup) ? 0.02 : 0) - (cat.branch === "hifz" ? 0.02 : 0));
+      s.questions = sampleQuestions(r, cat);
+      const base = sampleErrors(r, skill, s.questions.length);
       s.judges = JUDGES.map(([jName], j) => {
+        const errors = base.filter(() => r() < 0.8).concat(r() < 0.3 ? sampleErrors(r, 0.95, s.questions.length).slice(0, 1) : []);
         const criteria = {};
         rub.forEach(k => { const v = Math.min(1, Math.max(0.3, skill + (r() - 0.5) * 0.12)); criteria[k.key] = Math.round(k.max * v * 4) / 4; });
         const total = round(Object.values(criteria).reduce((a, b) => a + b, 0), 2);
-        return { slot: j + 1, name: jName, criteria, total };
+        return { slot: j + 1, name: jName, criteria, total, errors };
       });
       const t = s.judges.map(j => j.total).sort((a, b) => a - b);
       const use = S.settings.scoring.method === "trimmed" && t.length >= 5 ? t.slice(1, -1) : t;
@@ -301,7 +338,7 @@ export async function loadSampleIntoFirestore({ count = 300, withMarks = false, 
     const id = `${cid}__${s.nid}`;
     const ses = sesByCat[s.categoryId];
     ses.order.push(id);
-    const { judges: jm, final, stars, rank, ...info } = s;
+    const { judges: jm, final, stars, rank, questions, ...info } = s;
     stOps.push([doc(db, "students", id), { ...info, competitionId: cid, status: "active", sessionId: ses.id, order: ses.order.length,
       checkin: withMarks ? { at: new Date().toISOString(), by: S.me.email } : null, photoThumb: "", dummy: true, createdAt: serverTimestamp() }]);
     if (withMarks) {
@@ -312,7 +349,7 @@ export async function loadSampleIntoFirestore({ count = 300, withMarks = false, 
         scOps.push([doc(db, "scores", `${ses.id}__${id}__${jd.email}`), {
           competitionId: cid, sessionId: ses.id, sessionName: ses.name, sessionDate: ses.date, studentId: id, studentName: s.name,
           regNo: s.regNo, nid: s.nid, categoryId: s.categoryId, categoryName: s.categoryName, judgeEmail: jd.email, judgeName: jd.name,
-          judgeSlot: jd.slot, chiefEmail, criteria: j.criteria, rubric: rub, total: j.total, errors: [], questions: [], note: "",
+          judgeSlot: jd.slot, chiefEmail, criteria: j.criteria, rubric: rub, total: j.total, errors: j.errors || [], questions: s.questions || [], note: "",
           locked: true, amendments: [], savedAt: new Date().toISOString(), dummy: true, createdAt: serverTimestamp() }]);
       });
       const criteriaAvg = {};
@@ -321,7 +358,8 @@ export async function loadSampleIntoFirestore({ count = 300, withMarks = false, 
         competitionId: cid, sessionId: ses.id, sessionName: ses.name, sessionDate: ses.date, chiefEmail, studentId: id,
         nid: s.nid, regNo: s.regNo, name: s.name, nameEn: s.nameEn, photoThumb: "", institution: s.institution, gender: s.gender,
         ageGroup: s.ageGroup, island: s.island, categoryId: s.categoryId, categoryName: s.categoryName,
-        judges: jm.map((j, k) => ({ slot: judges[k].slot, name: judges[k].name, email: judges[k].email, total: j.total, criteria: j.criteria, jali: 0, khafi: 0 })),
+        judges: jm.map((j, k) => ({ slot: judges[k].slot, name: judges[k].name, email: judges[k].email, total: j.total, criteria: j.criteria,
+          jali: (j.errors || []).filter(e => e.type === "jali").length, khafi: (j.errors || []).filter(e => e.type === "khafi").length })),
         criteriaAvg, final, stars, method: S.settings.scoring.method, rubric: rub, published: true, dummy: true,
         finalizedBy: S.me.email, finalizedAt: serverTimestamp() }]);
     }
