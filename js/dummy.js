@@ -370,6 +370,10 @@ export async function loadSampleIntoFirestore({ count = 300, withMarks = false, 
     }
   });
 
+  // the stored ordered list of every session (what judges and the door tablet see)
+  const infoById = Object.fromEntries(list.map(s => [`${cid}__${s.nid}`, s]));
+  sessions.forEach(ses => { ses.roster = ses.order.map((id, i) => { const st = infoById[id] || {};
+    return { id, order: i + 1, name: st.name || "", regNo: st.regNo || "", nid: st.nid || "", categoryName: st.categoryName || "", gender: st.gender || "", photoThumb: "" }; }); });
   const all = stOps.length + sessions.length + scOps.length + rsOps.length;
   let base = 0;
   const prog = (d) => onProgress && onProgress(base + d, all);

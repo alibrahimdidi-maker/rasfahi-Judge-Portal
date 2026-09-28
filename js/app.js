@@ -9,7 +9,7 @@ import {
 // apply the last-used colour theme before anything draws (settings load later)
 try { const t = localStorage.getItem("rasfahiTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 
-const V = (file, fn) => async () => (await import(`./views/${file}.js?v=9`))[fn];
+const V = (file, fn) => async () => (await import(`./views/${file}.js?v=10`))[fn];
 
 // Tabs for each role. Only what the super admin gave to the role is available.
 const NAV = {
@@ -27,6 +27,7 @@ const NAV = {
     ["results", "ނަތީޖާ", V("results", "results")],
     ["report", "📊 ރިޕޯޓް", V("report", "report")],
     ["archive", "🎥 އާކައިވް", V("archive", "archive")],
+    ["access", "🔐 ޝެޑިއުލް ހުއްދަ", V("office", "scheduleAccess")],
     ["prints", "ލިސްޓާއި ޕްރިންޓް", V("office", "prints")],
     ["audit", "އޯޑިޓް", V("admin", "auditLog")]
   ],
@@ -41,6 +42,7 @@ const NAV = {
     ["results", "ނަތީޖާ", V("results", "results")],
     ["report", "📊 ރިޕޯޓް", V("report", "report")],
     ["archive", "🎥 އާކައިވް", V("archive", "archive")],
+    ["access", "🔐 ޝެޑިއުލް ހުއްދަ", V("office", "scheduleAccess")],
     ["prints", "ލިސްޓާއި ޕްރިންޓް", V("office", "prints")]
   ],
   secretary: [
@@ -64,7 +66,8 @@ const NAV = {
   supervisor: [
     ["home", "ސެޝަންތަކުގެ ޙާލަތު", V("results", "dashboard")],
     ["results", "ފައިނަލް ނަތީޖާ", V("results", "results")],
-    ["report", "📊 ރިޕޯޓް", V("report", "report")]
+    ["report", "📊 ރިޕޯޓް", V("report", "report")],
+    ["access", "🔐 ޝެޑިއުލް ހުއްދަ", V("office", "scheduleAccess")]
   ],
   consultant: [
     ["results", "ނަތީޖާ", V("results", "results")]
