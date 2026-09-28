@@ -174,7 +174,8 @@ function form(a, isFix = false) {
     <h3>މުބާރާތުގެ ބައި</h3>
     <div class="grid3">
       <label class="field"><span class="req">ގޮފި</span><select id="fBranch"><option value="">— ހޮއްވަވާ —</option>
-        ${[...new Set(cats.map(c => c.branch))].filter(Boolean).map(b => `<option value="${b}">${b === "hifz" ? "ނުބަލައި" : "ބަލައިގެން"}</option>`).join("")}</select></label>
+        ${["mushaf", "hifz"].map(b => { const n = cats.filter(c => c.branch === b).length;
+          return `<option value="${b}" ${n ? "" : "disabled"}>${b === "hifz" ? "ނުބަލައި" : "ބަލައިގެން"}${n ? "" : " — (މި ފަހަރު ބައެއް ނެތް)"}</option>`; }).join("")}</select></label>
       <label class="field"><span>ޢުމުރު (ޑެޑްލައިނަށް)</span><div id="fAgeShow" class="age-show">—</div></label>
       <label class="field"><span class="req">ބައިވެރިވާ ޢުމުރުފުރާ</span><select id="fAgeGroup"><option value="">— ހޮއްވަވާ —</option>
         ${AGE_ORDER.filter(k => cats.some(c => c.ageGroup === k)).map(k => `<option value="${k}">${esc(AGE_GROUPS[k] || k)}</option>`).join("")}</select></label>

@@ -2,14 +2,14 @@
 //  RASFAHI — app shell: login, role check, role-based navigation
 // ============================================================
 import {
-  S, auth, db, doc, getDoc, setDoc, serverTimestamp, onAuthStateChanged, loginGoogle, logout, loadSettings,
-  h, $, esc, roleName, clearSubs, toast, BOOTSTRAP_SUPERADMIN, emailOf, audit
+  S, auth, db, doc, getDoc, setDoc, updateDoc, serverTimestamp, onAuthStateChanged, loginGoogle, logout, loadSettings,
+  h, $, esc, roleName, clearSubs, toast, modal, select, BOOTSTRAP_SUPERADMIN, emailOf, audit, loadGrant, reauthGoogle, ROLES, fmtDateTime
 } from "./core.js";
 
 // apply the last-used colour theme before anything draws (settings load later)
 try { const t = localStorage.getItem("rasfahiTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 
-const V = (file, fn) => async () => (await import(`./views/${file}.js?v=11`))[fn];
+const V = (file, fn) => async () => (await import(`./views/${file}.js?v=12`))[fn];
 
 // Tabs for each role. Only what the super admin gave to the role is available.
 const NAV = {
@@ -27,9 +27,9 @@ const NAV = {
     ["results", "ނަތީޖާ", V("results", "results")],
     ["report", "📊 ރިޕޯޓް", V("report", "report")],
     ["archive", "🎥 އާކައިވް", V("archive", "archive")],
-    ["access", "🔐 ޝެޑިއުލް ހުއްދަ", V("office", "scheduleAccess")],
+    ["access", "🔐 ހުއްދަ", V("office", "scheduleAccess")],
     ["prints", "ލިސްޓާއި ޕްރިންޓް", V("office", "prints")],
-    ["audit", "އޯޑިޓް", V("admin", "auditLog")]
+    ["audit", "📜 ހިސްޓްރީ", V("admin", "auditLog")]
   ],
   adminsec: [
     ["home", "ޑޭޝްބޯޑް", V("results", "dashboard")],
@@ -42,7 +42,8 @@ const NAV = {
     ["results", "ނަތީޖާ", V("results", "results")],
     ["report", "📊 ރިޕޯޓް", V("report", "report")],
     ["archive", "🎥 އާކައިވް", V("archive", "archive")],
-    ["access", "🔐 ޝެޑިއުލް ހުއްދަ", V("office", "scheduleAccess")],
+    ["access", "🔐 ހުއްދަ", V("office", "scheduleAccess")],
+    ["history", "📜 ހިސްޓްރީ", V("admin", "auditLog")],
     ["prints", "ލިސްޓާއި ޕްރިންޓް", V("office", "prints")]
   ],
   secretary: [
@@ -67,7 +68,8 @@ const NAV = {
     ["home", "ސެޝަންތަކުގެ ޙާލަތު", V("results", "dashboard")],
     ["results", "ފައިނަލް ނަތީޖާ", V("results", "results")],
     ["report", "📊 ރިޕޯޓް", V("report", "report")],
-    ["access", "🔐 ޝެޑިއުލް ހުއްދަ", V("office", "scheduleAccess")]
+    ["access", "🔐 ހުއްދަ", V("office", "scheduleAccess")],
+    ["history", "📜 ހިސްޓްރީ", V("admin", "auditLog")]
   ],
   consultant: [
     ["results", "ނަތީޖާ", V("results", "results")]
@@ -81,6 +83,13 @@ const NAV = {
 };
 
 const root = $("#app");
+
+function roleSwitch() {
+  const sel = select([["superadmin", "🔀 ސުޕަރ އެޑްމިން"], ...Object.entries(ROLES).filter(([k]) => k !== "superadmin").map(([k, v]) => [k, "🔀 " + v.dv])], S.me.role);
+  sel.className = "role-switch"; sel.title = "ރޯލް ބަދަލުކުރުން (ސޮފްޓްވެއަރ ރީސްޓާޓްވާނެ)";
+  sel.onchange = () => shiftRole(sel.value);
+  return sel;
+}
 
 function loginView(msg) {
   window.__rasfahiBoot = true;
@@ -153,7 +162,14 @@ async function boot(user) {
   if (!snap.exists()) return noAccess(email, "މި އީމެއިލަށް ހުއްދަ ދީފައެއް ނުވޭ");
   S.me = { id: snap.id, ...snap.data() };
   if (!S.me.active) return noAccess(email, "މި އެކައުންޓް ޑިސޭބަލް ކޮށްފައި");
+  // 🔀 super admin working in another role (same e-mail): the software restarts in that role
+  S.me.realRole = S.me.role;
+  if (S.me.role === "superadmin") {
+    let act = ""; try { act = localStorage.getItem("rasfahiActAs") || ""; } catch (e) {}
+    if (act && act !== "superadmin" && ROLES[act]) S.me.role = act;
+  }
   await loadSettings();
+  await loadGrant();
   audit("login", { role: S.me.role });
   try {
     const cid = S.settings.activeCompetitionId;
@@ -162,9 +178,35 @@ async function boot(user) {
   shell();
 }
 
+// switch role and restart (super admin only)
+function shiftRole(role) {
+  try { if (role && role !== "superadmin") localStorage.setItem("rasfahiActAs", role); else localStorage.removeItem("rasfahiActAs"); } catch (e) {}
+  audit("role_shift", { from: S.me.role, to: role || "superadmin" }).finally(() => { location.hash = ""; location.reload(); });
+}
+// open a time-limited access that the admin / head supervisor gave: code + a fresh Google sign-in
+async function activateGrant() {
+  const g = S.grant;
+  const code = h("input.ltr", { inputmode: "numeric", maxlength: 6, placeholder: "000000", style: { fontSize: "26px", letterSpacing: "8px", textAlign: "center" } });
+  const ok = await modal("🔐 ބަދަލުކުރުމުގެ ހުއްދަ ހުޅުވުން", h("div",
+    h("p", `ހުއްދަ: ${(g.scopes || []).map(x => ({ students: "ދަރިވަރުންގެ މަޢުލޫމާތު", schedule: "ޝެޑިއުލް", results: "ނަތީޖާ" }[x] || x)).join("، ")}${g.role === "secretary" && S.me.role !== "secretary" ? " • ސެކްރެޓަރީގެ ރޯލް" : ""}`),
+    h("p.small.muted", `${fmtDateTime(g.until)} އާ ހަމައަށް • ދިނީ: ${g.byName || g.by || ""}`),
+    h("label.field", h("span", "1) އެޑްމިން / ހެޑް ސުޕަވައިޒަރ ދިން 6 ނަންބަރުގެ ކޯޑު"), code),
+    h("p.small.muted", "2) ދެން ގޫގުލް އިން އަލުން ލޮގިން ވުމަށް ވިންޑޯއެއް ހުޅުވޭނެ (ދެވަނަ ވެރިފިކޭޝަން).")),
+    [{ label: "ކެންސަލް" }, { label: "✔ ހުޅުވާ", cls: "primary", onClick: async () => {
+      if (!/^\d{6}$/.test(code.value.trim())) { toast("6 ނަންބަރުގެ ކޯޑު ޖައްސަވާ", "warn"); return false; }
+      try { await reauthGoogle(); } catch (e) { toast("ގޫގުލް ވެރިފިކޭޝަން ނުވި: " + (e.code || e.message), "err"); return false; }
+      try { await updateDoc(doc(db, "grants", emailOf(S.user)), { code: code.value.trim(), activatedAt: serverTimestamp() }); }
+      catch (e) { toast("ކޯޑު ރަނގަޅެއް ނޫން، ނުވަތަ ހުއްދަ ހަމަވެއްޖެ", "err"); return false; }
+      audit("grant_activate", { until: g.until ? g.until.toISOString() : "", scopes: g.scopes || [] }); return true; } }]);
+  if (ok) location.reload();
+}
+
 function shell() {
   window.__rasfahiBoot = true;
-  const tabs = NAV[S.me.role] || [];
+  // a chief judge (or anyone) given the secretary's role for a while also gets the secretary's tabs
+  const extra = S.grant && S.grant.active && S.grant.role && S.grant.role !== S.me.role ? (NAV[S.grant.role] || []) : [];
+  const base = NAV[S.me.role] || [];
+  const tabs = [...base, ...extra.filter(t => !base.some(b => b[0] === t[0]))];
   const isScreen = S.me.role.startsWith("screen_");
   root.innerHTML = "";
   const nav = h("nav.tabs");
@@ -174,10 +216,20 @@ function shell() {
       h("div.logo", "RASFAHI"),
       nav,
       h("div.who",
+        S.me.realRole === "superadmin" ? roleSwitch() : null,
         h("span.rolebadge", roleName(S.me.role)),
         h("span", S.me.name || S.user.displayName || ""),
         S.user.photoURL ? h("img", { src: S.user.photoURL, alt: "", referrerpolicy: "no-referrer" }) : null,
         h("button.btn.sm", { onclick: () => { clearSubs(); logout(); } }, "ލޮގްއައުޓް"))));
+  }
+  // banners: working in another role / a time-limited access
+  if (!isScreen && S.me.realRole === "superadmin" && S.me.role !== "superadmin")
+    root.appendChild(h("div.role-banner", `🔀 ސުޕަރ އެޑްމިން — މިހާރު ${roleName(S.me.role)} ގެ ރޯލުގައި`, h("button.btn.sm", { onclick: () => shiftRole("superadmin") }, "↩ ސުޕަރ އެޑްމިނަށް")));
+  if (!isScreen && S.grant && !S.grant.expired && !S.grant.active)
+    root.appendChild(h("div.grant-banner.pending", "🔐 ބަދަލުކުރުމުގެ ހުއްދައެއް ލިބިފައި — ހުޅުވުމަށް ކޯޑާއި ގޫގުލް ލޮގިން", h("button.btn.sm.primary", { onclick: activateGrant }, "ހުޅުވާ")));
+  if (!isScreen && S.grant && S.grant.active) {
+    const left = Math.max(0, Math.round((S.grant.until - new Date()) / 60000));
+    root.appendChild(h("div.grant-banner", `🔓 ބަދަލުކުރުމުގެ ހުއްދަ ހުޅުވިފައި — ${Math.floor(left / 60)} ގަޑިއިރު ${left % 60} މިނިޓު ބާކީ (${fmtDateTime(S.grant.until)})`));
   }
   root.appendChild(view);
   tabs.forEach(([key, label]) => nav.appendChild(h("button", { "data-k": key, onclick: () => { location.hash = key; } }, label)));

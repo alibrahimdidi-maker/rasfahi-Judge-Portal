@@ -3,7 +3,7 @@
 // ============================================================
 import { initializeApp } from "./firebase.bundle.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, reauthenticateWithPopup
 } from "./firebase.bundle.js";
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
@@ -122,11 +122,42 @@ export const starsEl = (n, cls = "") => h("span", { html: starsHtml(n, cls) });
 export const starsHtml = (n, cls = "") =>
   `<span class="stars ${cls}">${[1, 2, 3, 4, 5].map(i => `<i class="${i <= n ? "on" : ""}">★</i>`).join("")}</span>`;
 
+// every change is written to the history: who (email, name), with which role (and the real role when a
+// super admin works in another role), when, on which device, and what changed
 export async function audit(action, data = {}) {
   try {
-    await addDoc(collection(db, "audit"), { action, data, by: emailOf(S.user), at: serverTimestamp() });
+    await addDoc(collection(db, "audit"), { action, data, by: emailOf(S.user), name: (S.me && S.me.name) || "",
+      role: (S.me && S.me.role) || "", realRole: (S.me && S.me.realRole) || (S.me && S.me.role) || "",
+      grant: (S.grant && S.grant.active) ? { role: S.grant.role || "", scopes: S.grant.scopes || [] } : null,
+      device: (navigator.userAgent || "").replace(/\s+/g, " ").slice(0, 140), at: serverTimestamp() });
   } catch (e) { /* audit is best-effort */ }
 }
+// the fields that changed (for the history)
+export function diffOf(before = {}, after = {}) {
+  const out = {};
+  Object.keys(after).forEach(k => { if (k === "updatedAt" || k === "photo") return; const a = before[k], b = after[k];
+    if (JSON.stringify(a ?? "") !== JSON.stringify(b ?? "")) out[k] = [a ?? "", b ?? ""]; });
+  return out;
+}
+
+// ---------------- ACCESS GRANTS (time-limited, activated with a code + a fresh Google sign-in) ----------------
+export async function reauthGoogle() {
+  const p = new GoogleAuthProvider(); p.setCustomParameters({ prompt: "login" });
+  return reauthenticateWithPopup(auth.currentUser, p);
+}
+export async function loadGrant() {
+  S.grant = null;
+  try {
+    const g = await getDoc(doc(db, "grants", emailOf(S.user)));
+    if (g.exists()) {
+      const d = g.data(), until = d.until && d.until.toDate ? d.until.toDate() : null;
+      S.grant = { ...d, until, expired: !until || until <= new Date(), active: !!(until && until > new Date() && d.activatedAt) };
+    }
+  } catch (e) {}
+  return S.grant;
+}
+export const hasScope = (scope) => ["superadmin", "adminsec"].includes(S.me && S.me.role) || !!(S.grant && S.grant.active && (S.grant.scopes || []).includes(scope));
+export const actsSecretary = () => (S.me && S.me.role === "secretary") || !!(S.grant && S.grant.active && S.grant.role === "secretary");
 
 // ---------------- HELPERS ----------------
 export const $ = (sel, root = document) => root.querySelector(sel);
