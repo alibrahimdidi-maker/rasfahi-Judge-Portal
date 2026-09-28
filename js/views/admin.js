@@ -373,13 +373,63 @@ export async function categories(view) {
 }
 
 // ------------------------------------------------------------ AUDIT
+// ------------------------------------------------------------ HISTORY (📜) — every change: who, which e-mail, which role, when
+const ACTION_DV = {
+  login: "ލޮގިން", role_shift: "🔀 ރޯލް ބަދަލު", grant_give: "🔐 ހުއްދަ ދިނުން", grant_renew: "⟳ ހުއްދަ ރިނިއު", grant_revoke: "✖ ހުއްދަ ނިންމުން", grant_activate: "🔓 ހުއްދަ ހުޅުވުން",
+  student_create: "ދަރިވަރު ވެއްދުން", student_update: "✎ ދަރިވަރުގެ މަޢުލޫމާތު", student_delete: "🗑 ދަރިވަރު ފޮހެލުން", students_import: "📥 ލިސްޓް ވެއްދުން",
+  session_create: "ސެޝަން ހެދުން", session_update: "✎ ސެޝަން", session_save: "✎ ސެޝަން", session_delete: "🗑 ސެޝަން ފޮހެލުން", session_assign: "ސެޝަނަށް ދަރިވަރުން", auto_schedule: "⚡ އޮޓޯ ޝެޑިއުލް",
+  score_unlock: "🔓 މާކްސް ޝީޓު ހުޅުވުން", score_amend: "✎ މާކްސް އެމެންޑް", score_save: "💾 މާކްސް", result_finalize: "ނަތީޖާ ނިންމުން",
+  attendance: "✔ ހާޟިރީ", attendance_remove: "✖ ހާޟިރީ ނެގުން", note_add: "💬 ކޮމެންޓް", reschedule_forward: "📨 ރިޝެޑިއުލް",
+  application_status: "އެޕްލިކޭޝަން", recording_save: "🎥 ރެކޯޑިންގ", recording_remove: "🎥 ރެކޯޑިންގ ނެގުން", settings_save: "⚙ ސެޓިންގްސް"
+};
+const DAYS_DV = ["އާދިއްތަ", "ހޯމަ", "އަންގާރަ", "ބުދަ", "ބުރާސްފަތި", "ހުކުރު", "ހޮނިހިރު"];
 export async function auditLog(view) {
-  const card = h("div.card", h("h2", "އޯޑިޓް ލޮގް (އެންމެ ފަހުގެ 300)"), spinner());
+  const card = h("div.card", h("h2", "📜 ހިސްޓްރީ — ހުރިހާ ބަދަލެއް"), spinner());
   view.appendChild(card);
-  const snap = await getDocs(collection(db, "audit"));
-  const rows = snap.docs.map(d => d.data()).sort((a, b) => (b.at?.seconds || 0) - (a.at?.seconds || 0)).slice(0, 300);
+  let rows = [];
+  try { rows = (await getDocs(collection(db, "audit"))).docs.map(d => d.data()).sort((a, b) => (b.at?.seconds || 0) - (a.at?.seconds || 0)); }
+  catch (e) { card.lastChild.remove(); return card.appendChild(empty("ހިސްޓްރީ ނުލިބުނު: " + (e.code || e.message))); }
   card.lastChild.remove();
-  card.appendChild(h("div.tbl-wrap", h("table.tbl", h("thead", h("tr", ["ވަގުތު", "ފަރާތް", "ޢަމަލު", "ތަފްޞީލު"].map(x => h("th", x)))),
-    h("tbody", rows.map(r => h("tr", h("td.small.ltr", fmtDateTime(r.at)), h("td.ltr.small", r.by), h("td", r.action),
-      h("td.ltr.small", { style: { maxWidth: "500px", overflow: "hidden", textOverflow: "ellipsis" } }, JSON.stringify(r.data || {}).slice(0, 200))))))));
+  const kinds = { edits: a => !["login", "role_shift"].includes(a) && !a.startsWith("grant") && !a.startsWith("score") && a !== "result_finalize",
+    marks: a => a.startsWith("score") || a === "result_finalize", access: a => a.startsWith("grant") || a === "role_shift", logins: a => a === "login" };
+  const fKind = select([["", "ހުރިހާ ޢަމަލެއް"], ["edits", "✎ މަޢުލޫމާތު / ޝެޑިއުލް ބަދަލު"], ["marks", "✎ މާކްސް އެމެންޑް / ނަތީޖާ"], ["access", "🔐 ހުއްދަ / ރޯލް ބަދަލު"], ["logins", "ލޮގިން"]], "edits");
+  const people = [...new Set(rows.map(r => r.by).filter(Boolean))].sort();
+  const fWho = select([["", "ހުރިހާ ފަރާތެއް"], ...people.map(p => [p, p])], "");
+  const fFrom = h("input", { type: "date" }), fTo = h("input", { type: "date" });
+  const q = h("input", { placeholder: "🔍 ހޯދާ (ނަން، އައިޑީ ...)" });
+  const box = h("div");
+  [fKind, fWho, fFrom, fTo].forEach(x => x.onchange = draw); q.oninput = () => { clearTimeout(q._t); q._t = setTimeout(draw, 250); };
+  card.append(h("p.small.muted", "ހިސްޓްރީ ބަދަލެއް ނުވަތަ ފޮހެލުމެއް ނުކުރެވޭނެ. ކޮންމެ ލައިނެއްގައި ތާރީޚް، ދުވަސް، ގަޑި، އީމެއިލް، ނަން، ރޯލް (ރޯލް ބަދަލުކޮށްގެން ނަމަ އަސްލު ރޯލް)، ޢަމަލު އަދި ބަދަލުވި ތަކެތި."),
+    h("div.filters", fKind, fWho, h("label.row", "ފެށޭ", fFrom), h("label.row", "ނިމޭ", fTo), q), box);
+  const detail = (r) => {
+    const d = r.data || {};
+    if (d.changes && Object.keys(d.changes).length) return h("div", d.name ? h("b", d.name) : null,
+      ...Object.entries(d.changes).slice(0, 12).map(([k, [o, n]]) => h("div.small", h("span.muted", k + ": "), h("s.muted", String(o).slice(0, 40)), " ← ", h("b", String(n).slice(0, 60)))));
+    if (r.action === "score_amend") return h("div.small", `ޝީޓު: ${d.id || ""} • `, h("s.muted", String(d.old ?? "")), " ← ", h("b", String(d.new ?? "")), d.reason ? " • " + d.reason : "");
+    return h("div.small.ltr", JSON.stringify(d).slice(0, 220));
+  };
+  function draw() {
+    const t = q.value.trim().toLowerCase();
+    const from = fFrom.value ? new Date(fFrom.value + "T00:00:00") : null, to = fTo.value ? new Date(fTo.value + "T23:59:59") : null;
+    const list = rows.filter(r => {
+      const at = r.at && r.at.toDate ? r.at.toDate() : null;
+      return (!fKind.value || kinds[fKind.value](r.action || "")) && (!fWho.value || r.by === fWho.value) &&
+        (!from || (at && at >= from)) && (!to || (at && at <= to)) && (!t || JSON.stringify(r).toLowerCase().includes(t));
+    });
+    box.innerHTML = "";
+    box.appendChild(h("div.small.muted", { style: { margin: "6px 0" } }, `${list.length} ލައިން`));
+    box.appendChild(h("div.tbl-wrap", h("table.tbl.hist", h("thead", h("tr", ["ތާރީޚް", "ދުވަސް", "ގަޑި", "ފަރާތް (އީމެއިލް)", "ރޯލް", "ޢަމަލު", "ތަފްޞީލު"].map(x => h("th", x)))),
+      h("tbody", list.slice(0, 500).map(r => {
+        const at = r.at && r.at.toDate ? r.at.toDate() : null;
+        return h("tr" + (kinds.marks(r.action || "") ? ".hist-marks" : ""),
+          h("td.ltr.small", at ? at.toISOString().slice(0, 10) : ""), h("td.small", at ? DAYS_DV[at.getDay()] : ""),
+          h("td.ltr.small", at ? at.toTimeString().slice(0, 8) : ""),
+          h("td", h("div", r.name || ""), h("div.small.muted.ltr", r.by || "")),
+          h("td.small", roleName(r.role || ""), r.realRole && r.realRole !== r.role ? h("div.tag.orange", "🔀 " + roleName(r.realRole)) : null,
+            r.grant ? h("div.tag.blue", "🔐 ވަގުތީ ހުއްދަ") : null),
+          h("td", h("b", ACTION_DV[r.action] || r.action)), h("td", detail(r)));
+      })))));
+    if (list.length > 500) box.appendChild(h("p.small.muted", "ފުރަތަމަ 500 — ފިލްޓަރުން ކުޑަކުރައްވާ."));
+  }
+  draw();
 }

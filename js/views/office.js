@@ -5,7 +5,8 @@ import {
   S, db, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, serverTimestamp,
   runTransaction, writeBatch, h, esc, toast, modal, confirmBox, promptBox, field, select, spinner, empty, audit,
   fmtDate, fmtDateTime, AGE_GROUPS, GENDERS, INST_TYPES, BRANCHES, ageGroupName, genderName, instTypeName, normId, digits,
-  loadCategories, loadSessions, catById, cache, photoTag, resizeImage, ageOn, downloadCSV, PUBLIC_BASE_URL, sessionLabel, todayISO
+  loadCategories, loadSessions, catById, cache, photoTag, resizeImage, ageOn, downloadCSV, PUBLIC_BASE_URL, sessionLabel, todayISO,
+  hasScope, actsSecretary, diffOf, sha256Hex, ROLES, roleName
 } from "../core.js";
 import { printDoc, tableHTML, admitCardsHTML, blankSheetsHTML, sigBlock, a5JudgeSheetHTML, noticeBoardHTML, sessionJudgeTableHTML } from "../print.js";
 import { downloadSampleList, downloadImportTemplate, loadSampleIntoFirestore, removeSampleData } from "../dummy.js";
@@ -45,7 +46,8 @@ function toISO(v) {
   const d = new Date(t); return isNaN(d) ? t : d.toISOString().slice(0, 10);
 }
 
-const canEdit = () => ["superadmin", "adminsec"].includes(S.me.role);
+const isAdm = () => ["superadmin", "adminsec"].includes(S.me.role);
+const canEdit = () => isAdm() || (actsSecretary() && hasScope("students"));
 const needComp = (view) => {
   if (S.settings.activeCompetitionId) return false;
   view.appendChild(h("div.card", empty("ހިނގަމުންދާ މުބާރާތެއް ހޮވާފައެއް ނުވޭ. ސުޕަރ އެޑްމިން ސެޓިންގްސް ޓެބުން ހޮއްވަވާ.")));
@@ -289,10 +291,10 @@ export async function students(view) {
   const fCk = select([["", "ޗެކްއިން: ހުރިހާ"], ["in", "ޗެކްއިން ވެއްޖެ"], ["out", "ޗެކްއިން ނުވާ"]], "");
   const box = h("div", spinner());
   card.append(h("div.filters", fTxt, fCat, fGen, fInst, fSes, fCk,
-    canEdit() ? h("button.btn.primary", { onclick: () => edit() }, "+ ދަރިވަރެއް") : null,
+    isAdm() ? h("button.btn.primary", { onclick: () => edit() }, "+ ދަރިވަރެއް") : null,
     h("button.btn", { onclick: () => exportCSV() }, "⬇ CSV"), h("button.btn", { onclick: () => printList() }, "🖨 ލިސްޓް"),
     h("button.btn", { onclick: () => printDoc("ދަރިވަރު ކާޑު", admitCardsHTML(filtered(), Object.fromEntries(sessions.map(s => [s.id, s])))) }, "🪪 ކާޑު")), box);
-  if (canEdit()) view.appendChild(sampleCard());
+  if (isAdm()) view.appendChild(sampleCard());
   view.appendChild(card);
 
   // ---------------------------------------------------------------- SAMPLE LISTS, TEST DATA & IMPORT
@@ -410,7 +412,7 @@ export async function students(view) {
       h("div.grid3", field("ދާއިމީ އެޑްރެސް", inp("permAddress")), field("އަތޮޅާއި ރަށް", inp("island")), field("މިހާރު އުޅޭ އެޑްރެސް", inp("currentAddress"))),
       h("div.grid3", field("ފޯނު", inp("phone", { class: "ltr" })), field("އީމެއިލް", inp("email", { class: "ltr" })), field("ބައި", sel("categoryId", cats.map(c => [c.id, c.name])))),
       h("div.grid3", field("މުއައްސަސާ", inp("institution")), field("ވައްތަރު", sel("instType", INST_TYPES)), field("ބެލެނިވެރިޔާ / ފޯނު", inp("guardianName")))),
-      [...(s0 ? [{ label: "🗑 ފޮހެލާ", cls: "red", onClick: async () => {
+      [...(s0 && isAdm() ? [{ label: "🗑 ފޮހެލާ", cls: "red", onClick: async () => {
         if (!await confirmBox("ފޮހެލުން", s.name + " ފޮހެލަންވީތޯ؟ (މާކްސް ޝީޓްތައް ނުފޮހެވޭ)", "ފޮހެލާ", "red")) return false;
         await deleteDoc(doc(db, "students", s0.id)); audit("student_delete", { id: s0.id }); return true;
       } }] : []),
@@ -433,8 +435,8 @@ export async function students(view) {
           Object.assign(data, { createdAt: serverTimestamp(), status: "active", sessionId: "", order: 0, checkin: null });
         }
         await setDoc(doc(db, "students", id), data, { merge: true });
-        if (photo) await setDoc(doc(db, "photos", id), { photo, updatedAt: serverTimestamp() });
-        audit(s0 ? "student_update" : "student_create", { id }); return true;
+        if (photo && isAdm()) await setDoc(doc(db, "photos", id), { photo, updatedAt: serverTimestamp() });
+        audit(s0 ? "student_update" : "student_create", { id, name: data.name || (s0 && s0.name) || "", changes: diffOf(s0 || {}, data) }); return true;
       } }], { wide: true });
     if (ok) { toast("ސޭވް ކުރެވިއްޖެ"); load(); }
   }
@@ -570,29 +572,25 @@ async function publishSchedule(studentsList, sessionsList) {
   return n;
 }
 
-// ---- schedule lock: after publishing, the secretariat amends the schedule only with an open grant
+// ---- the secretariat edits the schedule only with a time-limited access (given in 🔐 ހުއްދަ)
 async function schedState() {
-  const locked = !!S.settings.scheduleLocked;
-  let grant = null;
-  try { const g = await getDoc(doc(db, "grants", "schedule")); if (g.exists()) grant = g.data(); } catch (e) {}
-  const until = grant && grant.until && grant.until.toDate ? grant.until.toDate() : null;
-  const mine = !!(grant && until && until > new Date() && (!(grant.to || []).length || (grant.to || []).includes(S.me.email)));
-  const isAdm = ["superadmin", "adminsec"].includes(S.me.role);
-  return { locked, grant, until, canEdit: isAdm || !locked || mine, isAdm };
+  const adm = isAdm();
+  const can = adm || (actsSecretary() && hasScope("schedule"));
+  return { locked: !adm, until: S.grant && S.grant.until, canEdit: can, isAdm: adm, pending: !!(S.grant && !S.grant.active && !S.grant.expired) };
 }
 
 export async function sessions(view) {
   if (needComp(view)) return;
   const cats = await loadCategories();
   const users = (await getDocs(collection(db, "users"))).docs.map(d => ({ id: d.id, ...d.data() })).filter(u => u.active);
-  const chiefs = users.filter(u => u.role === "chief"), judges = users.filter(u => u.role === "judge");
+  const chiefs = users.filter(u => (u.role === "chief" || u.role === "superadmin")), judges = users.filter(u => (u.role === "judge" || u.role === "superadmin"));
   const card = h("div.card", h("h2", "ސެޝަންތަކާއި ޝެޑިއުލް"));
   const box = h("div", spinner());
   const SS = await schedState();
-  const banner = SS.locked ? h("div.status-box." + (SS.canEdit ? "approved" : "needs_fix"),
-    SS.canEdit && !SS.isAdm ? `🔓 ޝެޑިއުލް ބަދަލުކުރުމުގެ ހުއްދަ ހުޅުވިފައި — ${SS.until ? fmtDateTime(SS.until) + " އާ ހަމައަށް" : ""}`
-      : SS.isAdm ? "🔒 ޝެޑިއުލް ލޮކް ކޮށްފައި — ސެކްރެޓޭރިއެޓަށް ބަދަލުކުރެވޭނީ '🔐 ޝެޑިއުލް ހުއްދަ' އިން ހުއްދަ ދިނުމުން"
-      : "🔒 ޝެޑިއުލް ލޮކް ކޮށްފައި. ބަދަލެއް ގެނައުމަށް އެޑްމިން ނުވަތަ ހެޑް ސުޕަވައިޒަރ ހުއްދަ ދޭން ޖެހޭ.") : null;
+  const banner = SS.isAdm ? null : h("div.status-box." + (SS.canEdit ? "approved" : "needs_fix"),
+    SS.canEdit ? `🔓 ޝެޑިއުލް ބަދަލުކުރުމުގެ ހުއްދަ ހުޅުވިފައި — ${SS.until ? fmtDateTime(SS.until) + " އާ ހަމައަށް" : ""}`
+      : SS.pending ? "🔐 ހުއްދައެއް ލިބިފައި — މަތީގައިވާ 'ހުޅުވާ' އިން ކޯޑާއި ގޫގުލް ލޮގިން ދީގެން ހުޅުއްވާ."
+      : "🔒 ޝެޑިއުލް ބަލާލެވޭނެ، ބަދަލެއް ނުކުރެވޭނެ. ބަދަލެއް ގެނައުމަށް އެޑްމިން ނުވަތަ ހެޑް ސުޕަވައިޒަރ ވަގުތީ ހުއްދަ ދޭން ޖެހޭ.");
   const lockedOut = !SS.canEdit;
   card.append(banner, h("div.row", h("button.btn.primary", { onclick: () => edit(), disabled: lockedOut }, "+ އާ ސެޝަނެއް"),
     h("button.btn.blue", { onclick: () => autoSchedule(), disabled: lockedOut }, "⚡ އޮޓޯ ޝެޑިއުލް")), h("div", { style: { height: "10px" } }), box);
@@ -699,7 +697,7 @@ export async function sessions(view) {
         const id = s0 ? s0.id : "S" + dt.value.replace(/-/g, "") + "_" + Math.random().toString(36).slice(2, 6);
         await setDoc(doc(db, "sessions", id), data, { merge: true });
         if (s0) await publishSchedule(studs.filter(st => st.sessionId === id), [{ ...s0, ...data, id }]);   // date / time / place changed
-        audit("session_save", { id }); return true;
+        audit(s0 ? "session_update" : "session_create", { id, name: data.name, changes: diffOf(s0 || {}, { ...data, judges: (data.judges || []).map(j => j.name) }) }); return true;
       } }], { wide: true });
     if (ok) { cache.sessions = null; load(); }
   }
@@ -854,39 +852,75 @@ async function sessionPackage(s, studs) {
   printDoc("ސެޝަން ފައިލު — " + s.name, `<style>.sess-head{border:2px solid #000;border-radius:6px;padding:6px 10px;margin:6px 0 10px;text-align:center;line-height:1.8}</style>` + out.join(pb), { landscape: true });
 }
 
-// ------------------------------------------------------------ SCHEDULE ACCESS (admin / head supervisor)
+// ------------------------------------------------------------ ACCESS (admin / head supervisor)
+// Secretaries, judges and chief judges cannot edit or delete information by default.
+// A time-limited access is given here; the person opens it with the 6-digit code (given by phone)
+// + a fresh Google sign-in. It ends by itself and must be renewed. Everything is kept in the history.
+const SCOPE_DV = { students: "ދަރިވަރުންގެ މަޢުލޫމާތު", schedule: "ޝެޑިއުލް / ސެޝަން" };
 export async function scheduleAccess(view) {
-  if (needComp(view)) return;
-  const isAdm = ["superadmin", "adminsec"].includes(S.me.role);
-  const users = (await getDocs(collection(db, "users"))).docs.map(d => ({ id: d.id, ...d.data() })).filter(u => u.active && u.role === "secretary");
-  const card = h("div.card", h("h2", "🔐 ޝެޑިއުލް ބަދަލުކުރުމުގެ ހުއްދަ"));
-  view.appendChild(card);
+  const users = (await getDocs(collection(db, "users"))).docs.map(d => ({ id: d.id, ...d.data() }))
+    .filter(u => u.active && ["secretary", "chief", "adminsec", "supervisor", "judge", "checkin"].includes(u.role));
+  const card = h("div.card"); view.appendChild(card);
   async function draw() {
-    const SS = await schedState();
-    card.innerHTML = ""; card.appendChild(h("h2", "🔐 ޝެޑިއުލް ބަދަލުކުރުމުގެ ހުއްދަ"));
-    card.appendChild(h("div.status-box." + (SS.locked ? "needs_fix" : "approved"), SS.locked ? "🔒 ޝެޑިއުލް ލޮކް — ސެކްރެޓޭރިއެޓަށް ބަދަލުކުރެވޭނީ ހުއްދަ ދިނުމުން" : "🔓 ޝެޑިއުލް ލޮކް ނުކޮށް — ސެކްރެޓޭރިއެޓަށް ބަދަލުކުރެވޭ"));
-    if (isAdm) card.appendChild(h("div.row", { style: { margin: "10px 0" } }, h("button.btn" + (SS.locked ? "" : ".red"), { onclick: async () => {
-      await setDoc(doc(db, "settings", "app"), { scheduleLocked: !SS.locked }, { merge: true }); S.settings.scheduleLocked = !SS.locked;
-      audit("schedule_lock", { locked: !SS.locked }); draw(); } }, SS.locked ? "🔓 ލޮކް ނަގާލާ" : "🔒 ޝެޑިއުލް ލޮކްކުރޭ (އިޢުލާނުކުރުމަށްފަހު)")));
-    const open = SS.until && SS.until > new Date();
-    card.appendChild(h("h3", "ސެކްރެޓޭރިއެޓަށް ހުއްދަ"));
-    card.appendChild(h("p", open ? `✔ ހުއްދަ ހުޅުވިފައި: ${fmtDateTime(SS.until)} އާ ހަމައަށް • ${(SS.grant.to || []).length ? SS.grant.to.join("، ") : "ހުރިހާ ސެކްރެޓަރީން"} • ދިނީ: ${SS.grant.byName || SS.grant.by || ""}` : "ހުއްދައެއް ހުޅުވިފައެއް ނުވޭ."));
-    const hrs = select([["1", "1 ގަޑިއިރު"], ["2", "2 ގަޑިއިރު"], ["4", "4 ގަޑިއިރު"], ["8", "8 ގަޑިއިރު"], ["24", "1 ދުވަސް"], ["48", "2 ދުވަސް"]], "2");
-    const who = users.map(u => { const c = h("input", { type: "checkbox", value: u.id }); return h("label.row", c, u.name || u.id); });
-    const why = h("input", { placeholder: "ސަބަބު (މިސާލު: ޗީފް ޖަޖު ފޮނުވި ރިޝެޑިއުލް)" });
-    card.append(h("div.grid2", field("މުއްދަތު", hrs), field("ސަބަބު", why)), h("div.small.muted", "ސެކްރެޓަރީ (ނުހޮވައިފިނަމަ ހުރިހާ ސެކްރެޓަރީން):"), h("div.grid3", who),
-      h("div.row", { style: { marginTop: "10px" } },
-        h("button.btn.green", { onclick: async () => {
-          const to = who.map(l => l.querySelector("input")).filter(c => c.checked).map(c => c.value);
-          await setDoc(doc(db, "grants", "schedule"), { until: new Date(Date.now() + +hrs.value * 3600000), to, reason: why.value.trim(), by: S.me.email, byName: S.me.name || "", at: serverTimestamp() });
-          audit("schedule_grant", { hrs: +hrs.value, to }); toast("ހުއްދަ ދެވިއްޖެ ✔"); draw(); } }, "✔ ހުއްދަ ދޭ"),
-        open ? h("button.btn.red", { onclick: async () => { await setDoc(doc(db, "grants", "schedule"), { until: new Date(0), to: [], by: S.me.email, at: serverTimestamp() });
-          audit("schedule_grant_close", {}); toast("ހުއްދަ ނިންމާލެވިއްޖެ"); draw(); } }, "✖ ހުއްދަ ނިންމާލާ") : null));
+    const gs = (await getDocs(collection(db, "grants"))).docs.map(d => ({ id: d.id, ...d.data() }))
+      .map(g => ({ ...g, untilD: g.until && g.until.toDate ? g.until.toDate() : null }))
+      .filter(g => g.id !== "schedule");
+    card.innerHTML = "";
+    card.append(h("h2", "🔐 ބަދަލުކުރުމުގެ ވަގުތީ ހުއްދަ"),
+      h("p.small.muted", "ސެކްރެޓަރީ، ޖަޖު އަދި ޗީފް ޖަޖަކަށް ޑިފޯލްޓްކޮށް އެއްވެސް މަޢުލޫމާތެއް ބަދަލެއް ނުވަތަ ފޮހެލުމެއް ނުކުރެވޭނެ. " +
+        "ހުއްދަ ދިނުމުން ދައްކާ 6 ނަންބަރުގެ ކޯޑު ފޯނުން ދެއްވާ. އޭނާ އެ ކޯޑާއި ގޫގުލް އިން އަލުން ލޮގިން ވެގެން (ދެވަނަ ވެރިފިކޭޝަން) ހުއްދަ ހުޅުވާނެ. " +
+        "ވަގުތު ހަމަވުމުން ހުއްދަ ނިމޭނެ — ރިނިއު ކުރަން ޖެހޭނެ. ހުރިހާ ބަދަލެއް 📜 ހިސްޓްރީގައި ފެންނާނެ."));
+    const who = select([["", "— މީހަކު ހޮވާ —"], ...users.map(u => [u.id, `${u.name || u.id} — ${roleName(u.role)}`])], "");
+    const asSec = h("input", { type: "checkbox" });
+    const scopes = Object.entries(SCOPE_DV).map(([k, t]) => { const c = h("input", { type: "checkbox", value: k }); c.checked = true; return h("label.row", c, t); });
+    const hrs = select([["1", "1 ގަޑިއިރު"], ["2", "2 ގަޑިއިރު"], ["4", "4 ގަޑިއިރު"], ["8", "8 ގަޑިއިރު"], ["12", "12 ގަޑިއިރު"], ["24", "1 ދުވަސް"]], "2");
+    const why = h("input", { placeholder: "ސަބަބު (މިސާލު: ރިޝެޑިއުލް، ދަރިވަރެއްގެ ނަން ރަނގަޅުކުރުން)" });
+    const out = h("div");
+    who.onchange = () => { const u = users.find(x => x.id === who.value); asSec.checked = !!(u && u.role !== "secretary"); };
+    card.append(h("h3", "+ އާ ހުއްދައެއް"),
+      h("div.grid3", field("މީހާ", who), field("މުއްދަތު", hrs), field("ސަބަބު", why)),
+      h("div.row", ...scopes, h("label.row", asSec, "ސެކްރެޓަރީގެ ރޯލް ދޭ (ސެކްރެޓަރީ ނެތް ހާލަތުގައި — މިސާލު ޗީފް ޖަޖަށް)")),
+      h("button.btn.green", { onclick: async () => {
+        if (!who.value) return toast("މީހަކު ހޮއްވަވާ", "warn");
+        const sc = scopes.map(l => l.querySelector("input")).filter(c => c.checked).map(c => c.value);
+        if (!sc.length) return toast("ހުއްދަ ދޭ ބައެއް ހޮއްވަވާ", "warn");
+        const code = String(Math.floor(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000)));
+        const u = users.find(x => x.id === who.value);
+        await setDoc(doc(db, "grants", who.value), { email: who.value, name: u.name || "", userRole: u.role, role: asSec.checked ? "secretary" : u.role,
+          scopes: sc, until: new Date(Date.now() + +hrs.value * 3600000), codeHash: await sha256Hex(code), activatedAt: null, code: "",
+          reason: why.value.trim(), by: S.me.email, byName: S.me.name || "", at: serverTimestamp() });
+        audit("grant_give", { to: who.value, hours: +hrs.value, scopes: sc, asSecretary: asSec.checked, reason: why.value.trim() });
+        out.innerHTML = "";
+        out.appendChild(h("div.grant-code", h("div", `${u.name || u.id} އަށް ދޭ ކޯޑު:`), h("b.ltr", code),
+          h("div.small.muted", "މި ކޯޑު ދެން ނުފެންނާނެ — ފޯނުން ދެއްވާ.")));
+        draw2();
+      } }, "✔ ހުއްދަ ދީ ކޯޑު ހަދާ"), out);
+    const list = h("div"); card.append(h("h3", "ހުއްދަތައް"), list);
+    function draw2() { getDocs(collection(db, "grants")).then(snap => {
+      const now = new Date();
+      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(g => g.id !== "schedule")
+        .map(g => ({ ...g, untilD: g.until && g.until.toDate ? g.until.toDate() : null }))
+        .sort((a, b) => (b.untilD || 0) - (a.untilD || 0));
+      list.innerHTML = "";
+      if (!rows.length) return list.appendChild(empty("ހުއްދައެއް ނެތް"));
+      list.appendChild(h("div.tbl-wrap", h("table.tbl", h("thead", h("tr", ["މީހާ", "ރޯލް", "ހުއްދަ", "ހަމަވާ", "ޙާލަތު", "ދިނީ", ""].map(x => h("th", x)))),
+        h("tbody", rows.map(g => { const live = g.untilD && g.untilD > now;
+          return h("tr", h("td", h("b", g.name || g.id), h("div.small.muted.ltr", g.id)), h("td", roleName(g.role) + (g.role !== g.userRole ? " (ވަގުތީ)" : "")),
+            h("td.small", (g.scopes || []).map(x => SCOPE_DV[x] || x).join("، ")), h("td.small", g.untilD ? fmtDateTime(g.untilD) : "-"),
+            h("td", !live ? h("span.tag", "ހަމަވެއްޖެ") : g.activatedAt ? h("span.tag.green", "🔓 ހުޅުވާފައި") : h("span.tag.orange", "🔐 ކޯޑަށް އިންތިޒާރު")),
+            h("td.small", g.byName || g.by || ""),
+            h("td", h("div.row", { style: { gap: "4px" } },
+              h("button.btn.sm", { onclick: async () => { const n = new Date(Math.max(now, g.untilD || now).valueOf() + 2 * 3600000);
+                await updateDoc(doc(db, "grants", g.id), { until: n, renewedBy: S.me.email, renewedAt: serverTimestamp() });
+                audit("grant_renew", { to: g.id, until: n.toISOString() }); toast("2 ގަޑިއިރަށް ރިނިއު ކުރެވިއްޖެ"); draw2(); } }, "⟳ +2 ގަޑި"),
+              live ? h("button.btn.sm.red", { onclick: async () => { await updateDoc(doc(db, "grants", g.id), { until: new Date(0), revokedBy: S.me.email, revokedAt: serverTimestamp() });
+                audit("grant_revoke", { to: g.id }); toast("ހުއްދަ ނިންމާލެވިއްޖެ"); draw2(); } }, "✖ ނިންމާ") : null))); })))));
+    }); }
+    draw2();
   }
   draw();
 }
 
-// ------------------------------------------------------------ PRINT CENTRE
 // session header used on every printed sheet (same as the 📦 session package)
 const SESS_CSS = `<style>.sess-head{border:2px solid #000;border-radius:6px;padding:6px 10px;margin:6px 0 10px;text-align:center;line-height:1.8}</style>`;
 function sessHeadHTML(s) {

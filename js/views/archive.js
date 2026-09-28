@@ -4,12 +4,12 @@
 //  plays inside a framed card with the student's name (play / back / forward).
 // ============================================================
 import {
-  S, db, doc, updateDoc, collection, query, where, getDocs, serverTimestamp, h, toast, modal, select, spinner, empty, audit,
+  S, db, doc, updateDoc, collection, query, where, getDocs, serverTimestamp, h, toast, modal, select, spinner, empty, audit, hasScope, actsSecretary,
   loadCategories, catById, AGE_GROUPS, ageGroupName, genderName, BRANCHES, photoTag
 } from "../core.js";
 import { mediaPlayer, parseMediaUrl, MEDIA_KIND_DV } from "../media.js";
 
-const canEdit = () => ["superadmin", "adminsec", "secretary"].includes(S.me.role);
+const canEdit = () => ["superadmin", "adminsec"].includes(S.me.role) || (actsSecretary() && hasScope("students"));
 
 // the royal card for one student
 export function recordingCard(st, onEdit) {
