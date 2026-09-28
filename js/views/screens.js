@@ -1,7 +1,7 @@
 // ============================================================
 //  TV SCREENS: student reading screen & waiting-room screen
 // ============================================================
-import { S, db, doc, getDoc, getDocs, collection, query, where, onSnapshot, h, esc, select, empty, sub, logout, starsHtml, beep, loadSessions, sessionLabel } from "../core.js";
+import { S, db, doc, getDoc, getDocs, collection, query, where, onSnapshot, h, esc, select, empty, sub, logout, starsHtml, beep, loadSessions, sessionLabel, todayISO } from "../core.js";
 import { loadQuran, renderPage, renderQuestion, questionPages, openingWords, pageImageURL, slotBand, pageSlotCount, arNum, qLabel } from "../quran.js";
 import { frameEl } from "../frames.js";
 
@@ -18,19 +18,35 @@ async function fullPhoto(st) {
   return photoCache[st.id];
 }
 
+// Which session a screen shows. "🔄 AUTO" follows whichever session is live right now (one hall),
+// so the screen can never be left on an old session.
 async function chooseSession(view, key, onPick) {
-  const sessions = (await loadSessions(true)).filter(s => s.status !== "closed");
-  const saved = localStorage.getItem(key);
-  if (saved && sessions.find(s => s.id === saved)) return onPick(saved);
-  const sel = select([["", "— ސެޝަން ހޮވާ —"], ...sessions.map(s => [s.id, sessionLabel(s)])], "");
+  const sessions = (await loadSessions(true)).filter(s => s.status !== "closed").sort((a, b) => String(a.date + a.time).localeCompare(String(b.date + b.time)));
+  let saved = null; try { saved = localStorage.getItem(key); } catch (e) {}
+  if (saved === null) saved = "auto";          // first time: follow the live session
+  const start = (v) => {
+    try { localStorage.setItem(key, v); } catch (e) {}
+    if (v !== "auto") return onPick(v);
+    // follow the live session
+    let cur = "", unsub = null;
+    const follow = () => sub(onSnapshot(query(collection(db, "sessions"), where("status", "==", "live")), snap => {
+      const live = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.startedAt?.seconds || 0) - (a.startedAt?.seconds || 0))[0];
+      const want = live ? live.id : (sessions.find(s => s.date === todayISO()) || sessions[0] || {}).id || "";
+      if (want && want !== cur) { cur = want; view.innerHTML = ""; onPick(want); }
+      else if (!want && !cur) { view.innerHTML = ""; view.appendChild(h("div.screen.student.off", h("div.standby", h("div.sb-logo", "RASFAHI"), h("div.sb-msg", "ލައިވް ސެޝަނަކަށް އިންތިޒާރުކުރަނީ")))); }
+    }, () => {}));
+    follow();
+  };
+  if (saved === "auto" || sessions.find(s => s.id === saved)) return start(saved);
+  const sel = select([["auto", "🔄 ހިނގަމުންދާ (ލައިވް) ސެޝަން — އަމިއްލައަށް"], ...sessions.map(s => [s.id, sessionLabel(s)])], "auto");
   view.appendChild(h("div.login", h("div.login-card", h("div.brand", "RASFAHI"), h("p", "ސްކްރީން ދައްކާނެ ސެޝަން ހޮއްވަވާ"), sel,
-    h("button.btn.primary", { style: { marginTop: "12px" }, onclick: () => { if (!sel.value) return; try { localStorage.setItem(key, sel.value); } catch (e) {} onPick(sel.value); } }, "ފަށާ"),
+    h("button.btn.primary", { style: { marginTop: "12px" }, onclick: () => { view.innerHTML = ""; start(sel.value); } }, "ފަށާ"),
     h("div", { style: { marginTop: "14px" } }, h("button.btn.sm.ghost", { onclick: logout }, "ލޮގްއައުޓް")))));
 }
 function screenMenu(view, key) {
   // small hidden controls: double-click top-left corner
   const m = h("div.fs-hint", "F11 = ފުލް ސްކްރީން  •  ސެޝަން ބަދަލުކުރުމަށް މިތަނަށް ޑަބަލްކްލިކް");
-  m.ondblclick = () => { try { localStorage.removeItem(key); } catch (e) {} location.reload(); };
+  m.ondblclick = () => { try { localStorage.setItem(key, "choose"); } catch (e) {} location.reload(); };
   view.appendChild(m);
   document.documentElement.requestFullscreen && view.addEventListener("click", () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {}); }, { once: true });
 }

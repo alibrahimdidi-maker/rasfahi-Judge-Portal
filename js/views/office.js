@@ -303,6 +303,11 @@ export async function students(view) {
     const busy = (on, msg) => { status.textContent = msg || ""; c.querySelectorAll("button").forEach(b => b.disabled = on); };
     const run = async (msg, fn) => { busy(true, msg); try { await fn(); } catch (e) { toast(e.message || String(e), "err", 7000); } finally { busy(false, status.textContent); } };
     const cnt = select([["100", "100 ދަރިވަރުން"], ["300", "300 ދަރިވަރުން"], ["1000", "1000 ދަރިވަރުން"], ["2000", "2000 ދަރިވަރުން"]], "300");
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const dFrom = h("input", { type: "date", value: iso(new Date(Date.now() + 86400000)) });
+    const dTo = h("input", { type: "date", value: iso(new Date(Date.now() + 32 * 86400000)) });
+    const perDay = select([["1", "ދުވަހަކު 1 ސެޝަން"], ["2", "ދުވަހަކު 2 ސެޝަން"], ["3", "ދުވަހަކު 3 ސެޝަން"], ["4", "ދުވަހަކު 4 ސެޝަން"]], "3");
+    const allAges = h("input", { type: "checkbox" }); allAges.checked = true;
     const box = (title, text, ...btns) => h("div", { style: { border: "1px solid var(--line2)", borderRadius: "12px", padding: "14px", background: "var(--panel2)" } },
       h("div", { style: { fontWeight: 700, color: "var(--gold2)", marginBottom: "6px", fontSize: "15px" } }, title),
       h("p.small.muted", { style: { margin: "0 0 10px", lineHeight: 1.8 } }, text), h("div.row", ...btns));
@@ -310,9 +315,12 @@ export async function students(view) {
       const n = +cnt.value;
       const ok = await confirmBox("ޓެސްޓަށް ނަމޫނާ ޑޭޓާ ލޯޑުކުރުން",
         `${n} ނަމޫނާ ދަރިވަރުން${withMarks ? "، 5 ޖަޖުންގެ މާކްސް އަދި ނަތީޖާ" : " (މާކްސް ނެތި)"} ހިނގަމުންދާ މުބާރާތަށް ވައްދާނެ. ` +
-        "ބައިތައް ނެތްނަމަ 8 ނަމޫނާ ބައި ހަދާނެ. ބައިތަކަށް ބަހާލައި، ކޮންމެ ބައެއްގެ ސެޝަނެއްވެސް ހަދާނެ. ފަހުން '🗑 ނަމޫނާ ޑޭޓާ ފޮހެލާ' އިން މުޅިން ފޮހެލެވޭނެ.", "ލޯޑުކުރޭ", "primary");
+        `${dFrom.value} އިން ${dTo.value} އަށް، ދުވަހަކު ${perDay.value} ސެޝަނަށް ބަހާލާނެ. ` +
+        (allAges.checked ? "ހުރިހާ ޢުމުރުފުރާއެއް × ދެ ގޮފީގެ ނަމޫނާ ބައިތައް ހަދާނެ. " : "") +
+        "ޖަޖު / ޗީފް ޖަޖުގެ އެކައުންޓެއް ނެތްނަމަ ތިބާ ޖަޖު 1 އާއި ޗީފް ޖަޖު ކަމުގައި ލާނެ (🔀 ރޯލް ބަދަލުކޮށް ޓެސްޓް ކުރެވޭނެ). ފަހުން '🗑 ނަމޫނާ ޑޭޓާ ފޮހެލާ' އިން މުޅިން ފޮހެލެވޭނެ.", "ލޯޑުކުރޭ", "primary");
       if (!ok) return;
-      const r = await loadSampleIntoFirestore({ count: n, withMarks, onProgress: (d, t) => status.textContent = `ލޯޑުވަނީ... ${d} / ${t}` });
+      const r = await loadSampleIntoFirestore({ count: n, withMarks, startDate: dFrom.value, endDate: dTo.value, perDay: +perDay.value, allAges: allAges.checked,
+        onProgress: (d, t) => status.textContent = `ލޯޑުވަނީ... ${d} / ${t}` });
       status.textContent = `✔ ${r.students} ދަރިވަރުން، ${r.sessions} ސެޝަން` + (r.categories ? `، ${r.categories} ބައި` : "") +
         (withMarks ? `، ${r.results} ނަތީޖާ، ${r.scores} ޖަޖު ޝީޓް` : "") + " ލޯޑުވެއްޖެ.";
       if (r.scoreError) toast("ނަތީޖާ ލޯޑުވެއްޖެ، ނަމަވެސް ޖަޖު ޝީޓްތައް ނުވަދެއެވެ. އާ firestore.rules ޕަބްލިޝް ކުރައްވާ.", "warn", 9000);
@@ -325,12 +333,15 @@ export async function students(view) {
         box("⬇ ނަމޫނާ ލިސްޓު ޑައުންލޯޑް (Excel)",
           "2000 ދަރިވަރުންގެ ފުރިހަމަ މަޢުލޫމާތު: ނަން، އައިޑީ، ރެޖި ނަންބަރު، ދާއިމީ އެޑްރެސް، ބައި، ގޮފި، ޢުމުރުފުރާ، މުއައްސަސާ. " +
           "'މާކްސް އާއެކު' ފައިލުގައި 5 ޖަޖުންގެ މާކްސް، ފައިނަލް، ތަރި އަދި ވަނަ ހުންނާނެ. 'މާކްސް ހުސް' ފައިލުގައި މާކްސް ލިޔުމުން Excel އިން ޖުމްލަ، ފައިނަލް އަދި ތަރި ހިސާބުކުރާނެ.",
-          h("button.btn.primary", { onclick: () => run("ފައިލު ހަދަނީ...", async () => { const n = await downloadSampleList(true); status.textContent = `✔ ${n} ދަރިވަރުންގެ ފައިލު ޑައުންލޯޑުވެއްޖެ (މާކްސް އާއެކު)`; }) }, "⬇ މާކްސް އާއެކު"),
-          h("button.btn", { onclick: () => run("ފައިލު ހަދަނީ...", async () => { const n = await downloadSampleList(false); status.textContent = `✔ ${n} ދަރިވަރުންގެ ފައިލު ޑައުންލޯޑުވެއްޖެ (މާކްސް ހުސްކޮށް)`; }) }, "⬇ މާކްސް ހުސްކޮށް")),
+          h("button.btn.primary", { onclick: () => run("ފައިލު ހަދަނީ...", async () => { const n = await downloadSampleList(true, 2000, allAges.checked); status.textContent = `✔ ${n} ދަރިވަރުންގެ ފައިލު ޑައުންލޯޑުވެއްޖެ (މާކްސް އާއެކު)`; }) }, "⬇ މާކްސް އާއެކު"),
+          h("button.btn", { onclick: () => run("ފައިލު ހަދަނީ...", async () => { const n = await downloadSampleList(false, 2000, allAges.checked); status.textContent = `✔ ${n} ދަރިވަރުންގެ ފައިލު ޑައުންލޯޑުވެއްޖެ (މާކްސް ހުސްކޮށް)`; }) }, "⬇ މާކްސް ހުސްކޮށް")),
         box("▶ ސޮފްޓްވެއަރ ޓެސްޓަށް ލޯޑުކުރުން",
           "ނަމޫނާ ދަރިވަރުން ސިސްޓަމަށް ވައްދާ. 'މާކްސް އާއެކު' ލޯޑުކުރުމުން ނަތީޖާ، ވަނަ، ޖަލްސާގެ ޕްރިންޓް ފަދަ ހުރިހާ ތަނެއް ބަލާލެވޭނެ. " +
           "'މާކްސް ނެތި' ލޯޑުކުރުމުން ސެޝަން ހުޅުވައި، ލައިވް ކޮންޓްރޯލާއި ޖަޖުން މާކްސް ދޭ ގޮތް ޓެސްޓްކުރެވޭނެ.",
-          cnt,
+          h("div", { style: { width: "100%" } },
+            h("div.grid2", h("label.field", h("span", "ފަށާ ތާރީޚް"), dFrom), h("label.field", h("span", "ނިމޭ ތާރީޚް"), dTo)),
+            h("div.grid2", cnt, perDay),
+            h("label.row", { style: { margin: "6px 0" } }, allAges, "ހުރިހާ ޢުމުރުފުރާއެއް × ބަލައިގެން / ނުބަލައި (+ މުޅި ޤުރްއާން) — 32 ނަމޫނާ ބައި")),
           h("button.btn.green", { onclick: () => load2(true) }, "▶ މާކްސް އާއެކު"),
           h("button.btn", { onclick: () => load2(false) }, "▶ މާކްސް ނެތި"),
           h("button.btn.red.sm", { onclick: () => run("ފޮހެލަނީ...", async () => {
@@ -847,8 +858,8 @@ async function sessionPackage(s, studs) {
     { t: "ސޮއި", html: () => "<div style='width:90px;height:22px'></div>" }], rows) + sigBlock(["ހާޟިރީ ބެލި މުވައްޒަފު", "ޗީފް ޖަޖު"]));
   const byCat = {}; rows.forEach(r => (byCat[r.categoryId] = byCat[r.categoryId] || []).push(r));
   const judges = (s.judges || []).length ? s.judges : [{ slot: "", name: "" }];
-  if (want.has("judges")) judges.forEach(j => Object.entries(byCat).forEach(([cid, list]) => out.push(head + sessionJudgeTableHTML(list, catById(cid), s, j.slot + (j.name ? " — " + j.name : "")))));
-  if (want.has("a5")) judges.forEach(j => Object.entries(byCat).forEach(([cid, list]) => out.push(a5JudgeSheetHTML(list, catById(cid), s, [j]))));
+  if (want.has("judges")) judges.forEach(j => out.push(sessionJudgeTableHTML(rows, mainCat(rows), s, j)));
+  if (want.has("a5")) judges.forEach(j => out.push(rows.map(r => a5JudgeSheetHTML([r], catById(r.categoryId), s, [j])).join("")));
   printDoc("ސެޝަން ފައިލު — " + s.name, `<style>.sess-head{border:2px solid #000;border-radius:6px;padding:6px 10px;margin:6px 0 10px;text-align:center;line-height:1.8}</style>` + out.join(pb), { landscape: true });
 }
 
@@ -923,11 +934,13 @@ export async function scheduleAccess(view) {
 
 // session header used on every printed sheet (same as the 📦 session package)
 const SESS_CSS = `<style>.sess-head{border:2px solid #000;border-radius:6px;padding:6px 10px;margin:6px 0 10px;text-align:center;line-height:1.8}</style>`;
+// public sheets (notice board, lists, attendance) never show the judges
 function sessHeadHTML(s) {
   if (!s) return `<div class="sess-head"><b>ސެޝަނަކަށް ނުލާ ދަރިވަރުން</b></div>`;
-  return `<div class="sess-head"><div><b>${esc(s.name)}</b></div><div>${esc(dayDv(s.date))} ${esc(s.date || "")} • ފަށާ ގަޑި: <b>${esc(s.time || "")}</b>${s.reportTime ? ` • ހާޟިރުވާ ގަޑި: <b>${esc(s.reportTime)}</b>` : ""} • ${esc(s.venue || "")}</div>
-    <div class="small">ޗީފް ޖަޖު: ${esc(s.chiefName || "")} • ޖަޖުން: ${(s.judges || []).map(j => esc(j.slot + ". " + j.name)).join("، ")}</div></div>`;
+  return `<div class="sess-head"><div><b><bdi>${esc(s.name)}</bdi></b></div><div>${esc(dayDv(s.date))} <bdi>${esc(s.date || "")}</bdi> • ފަށާ ގަޑި: <b>${esc(s.time || "")}</b>${s.reportTime ? ` • ހާޟިރުވާ ގަޑި: <b>${esc(s.reportTime)}</b>` : ""}${s.venue ? " • " + esc(s.venue) : ""}</div></div>`;
 }
+// the category whose rubric the session's judges' table uses (the most common one in the session)
+function mainCat(list) { const c = {}; list.forEach(r => c[r.categoryId] = (c[r.categoryId] || 0) + 1); return catById(Object.keys(c).sort((a, b) => c[b] - c[a])[0]); }
 
 export async function prints(view) {
   if (needComp(view)) return;
@@ -989,7 +1002,7 @@ export async function prints(view) {
     const rows = pick();
     if (!rows.length) return toast("ލިސްޓުގައި ދަރިވަރަކު ނެތް", "warn");
     const html = opts.flat ? build(rows.sort((a, b) => String((sesById[a.sessionId] || {}).date || "z").localeCompare(String((sesById[b.sessionId] || {}).date || "z")) || (a.order || 0) - (b.order || 0) || byReg(a, b)), null)
-      : groupsOf(rows).map(({ s, list }) => sessHeadHTML(s) + build(list.map((r, i) => ({ ...r, order: s ? r.order || i + 1 : i + 1 })), s)).join(PB);
+      : groupsOf(rows).map(({ s, list }) => (opts.noHead ? "" : sessHeadHTML(s)) + build(list.map((r, i) => ({ ...r, order: s ? r.order || i + 1 : i + 1 })), s)).join(PB);
     printDoc(title, SESS_CSS + html, { sub: sub(), landscape: !!opts.landscape });
   };
   const signers = () => Array.from({ length: +sigN.value }, (_, i) => i === 0 ? "ޗީފް ޖަޖު" : "ޖަޖު " + i);
@@ -1020,12 +1033,12 @@ export async function prints(view) {
       B("🪪 ދަރިވަރު ކާޑު", () => run("ދަރިވަރު ކާޑު", (list) => admitCardsHTML(list, sesById), { flat: true })),
       B("📝 ޖަޖުގެ ޝީޓް (A5)", () => run("ޖަޖުގެ މާކްސް ޝީޓް", (list, s) => {
         const judges = s && (s.judges || []).length ? s.judges : [{ slot: "", name: "" }];
-        return judges.map(j => byCatBuild(list, (l, cat) => a5JudgeSheetHTML(l, cat, s, [j]))).join("");
-      })),
+        return judges.map(j => list.map(r => a5JudgeSheetHTML([r], catById(r.categoryId), s, [j])).join("")).join("");
+      }, { noHead: true })),
       B("📑 ޖަޖުގެ ސެޝަން ޖަދުވަލު", () => run("ޖަޖުގެ ސެޝަން ޖަދުވަލު", (list, s) => {
         const judges = s && (s.judges || []).length ? s.judges : [{ slot: "1", name: "" }];
-        return judges.map(j => byCatBuild(list, (l, cat) => sessionJudgeTableHTML(l, cat, s, j.slot + (j.name ? " — " + j.name : "")) + sigBlock(signers()))).join(PB);
-      }, { landscape: true }))),
+        return judges.map(j => sessionJudgeTableHTML(list, mainCat(list), s, j)).join(PB);
+      }, { landscape: true, noHead: true }))),
     h("p.small.muted", "ނަތީޖާގެ ޝީޓްތައް (ވަނަތައް، ޖަލްސާގެ ޕްރިންޓް، ރުބްރިކް ރިޕޯޓް) ޕްރިންޓްކުރެވޭނީ 'ނަތީޖާ' ޓެބުން.")));
   // default: today's sessions if there are any
   if (dates.includes(today)) { fDate.value = today; fillSes(); }
