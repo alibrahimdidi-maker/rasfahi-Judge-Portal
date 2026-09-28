@@ -12,7 +12,8 @@ import {
 import { loadQuran, renderPage, renderQuestion, wordInfo, qLabelDv, qLabel, portion } from "../quran.js";
 import { JALI, JALI_TYPES, KHAFI_GROUPS, khafiInfo, errLabel } from "../tajweed.js";
 import { printDoc, scoreSheetHTML } from "../print.js";
-import { pickQuestion } from "../liveops.js";
+import { pickQuestion, numOf } from "../liveops.js";
+import { gridPicker } from "../gridpick.js";
 
 async function mySessions() {
   const snap = await getDocs(query(collection(db, "sessions"), where("judgeEmails", "array-contains", S.me.email)));
@@ -64,7 +65,7 @@ export async function live(view) {
       if (L && L.studentId && L.studentId !== curStudent) switchStudent(L.studentId);
       if (L && !L.studentId) { curStudent = ""; scoreDoc = null; D = null; }
       if (L && L.qIndex !== lastQ && L.qIndex >= 0 && L.phase === "reading") {
-        if (prev && prev.studentId === L.studentId) flash(`ނަންބަރު ${(L.picks || [])[L.qIndex] ?? ""} — ސުވާލު ${L.qIndex + 1}`);
+        if (prev && prev.studentId === L.studentId) flash(`ނަންބަރު ${numOf(L, L.qIndex)} — ސުވާލު ${L.qIndex + 1}`);
         viewQ = L.qIndex; lastQ = L.qIndex;
       }
       if (L && prev && prev.light !== L.light && L.light === "go") beep(988, 150);
@@ -121,17 +122,38 @@ export async function live(view) {
       if (locked()) return;
       const info = wordInfo(isNaN(+w) ? w : +w);
       const existing = D.errors.filter(e => String(e.w) === String(w) && e.qIndex === viewQ);
+      // ---- the letter: tap the letter that was read wrongly (a letter + its marks)
+      const letters = String(info.text || "").match(/[\u0621-\u063A\u0641-\u064A\u0671-\u06D3\u06FA-\u06FC][\u064B-\u065F\u0670\u06D6-\u06ED\u08D3-\u08FF\u0640]*/g) || [];
+      let li = -1;
+      const wordBox = h("div.pop-word");
+      const paintWord = () => { wordBox.innerHTML = ""; if (li < 0) { wordBox.textContent = info.text; return; }
+        letters.forEach((L2, i) => wordBox.appendChild(h("span" + (i === li ? ".pop-letter" : ""), L2))); };
+      const chips = h("div.letter-chips", letters.map((L2, i) => h("button.lchip", { onclick: () => { li = li === i ? -1 : i; paintWord();
+        chips.querySelectorAll(".lchip").forEach((c, k) => c.classList.toggle("on", k === li)); quick.style.display = li >= 0 ? "" : "none"; } }, L2)));
+      const withLetter = (e) => (li >= 0 ? { ...e, letter: letters[li].replace(/[\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/g, ""), letterFull: letters[li], letterIndex: li } : e);
+      const sif = KHAFI_GROUPS.find(g => g.key === "sifat");
+      const quick = h("div.letter-quick", { style: { display: "none" } },
+        h("button.lq.jali", { onclick: () => { addError(w, withLetter({ type: "jali", crit: JALI.crit, ded: +cat().jaliDed || JALI.ded, sub: "jali_harf", subDv: "އަކުރެއް ބަދަލުކުރުން", subAr: "إبدال حرف بحرف" })); close(); } },
+          "🔴 އަކުރު މުޅިން އެހެން އަކުރަކަށް ބަދަލުވެއްޖެ", h("small", "ލަޙްނު ޖަލީ — إبدال حرف")),
+        h("button.lq.khafi", { onclick: () => { const it = sif ? sif.items[0] : ["sifa", "الصفة", "ޞިފަ"];
+          addError(w, withLetter({ type: "khafi", group: "sifat", groupDv: sif ? sif.dv : "ޞިފަ", sub: "sifa_incomplete", subDv: "އަކުރުގެ ޞިފަ ފުރިހަމަނުވުން", subAr: "عدم إكمال صفة الحرف",
+            crit: sif ? sif.crit : "sifa", ded: +(cat().khafiDed ?? 0.5) })); close(); } },
+          "🟠 އަކުރުގެ ޞިފަ ފުރިހަމަ ނުވޭ", h("small", "ލަޙްނު ޚަފީ — ޞިފަ")),
+        h("div.small.muted", "ނުވަތަ ތިރީގެ ލިސްޓުން ކުށުގެ ވައްތަރު ހޮއްވަވާ — ހޮވި އަކުރު ކުށާއެކު ސޭވްވާނެ."));
+      paintWord();
       const content = h("div.khafi-pop",
-        h("div.pop-word", info.text),
+        wordBox,
+        letters.length > 1 ? h("div.small.muted.center", "ނުބައިކޮށް ކިޔެވި އަކުރަށް ފިތާލައްވާ:") : null,
+        letters.length > 1 ? chips : null, quick,
         h("div.small.muted.center", `${info.surahName} : ${info.ayah} • ޞަފުޙާ ${info.page}${info.line ? " • ފޮޅުވަތް " + info.line : ""}`),
         existing.length ? h("div.card", { style: { margin: "10px 0" } }, h("h4", "މި ކަލިމައިގެ ކުށްތައް"),
           existing.map(e => h("div.erritem." + e.type, h("span.etype", errLabel(e)), h("button.btn.sm.red", { onclick: () => { removeError(e.id); close(); } }, "ފޮހެލާ")))) : null,
         h("div.grp", h("h4", { style: { color: "#ff7070" } }, "ލަޙްނު ޖަލީ"), h("div.opts",
-          h("button", { onclick: () => { jali(w); close(); } }, "ލަޙްނު ޖަލީ", h("small", "لحن جلي")),
-          JALI_TYPES.map(t => h("button", { onclick: () => { addError(w, { type: "jali", crit: JALI.crit, ded: +cat().jaliDed || 1, sub: t.key, subDv: t.dv, subAr: t.ar }); close(); } }, t.dv, h("small", t.ar))))),
+          h("button", { onclick: () => { if (li >= 0) addError(w, withLetter({ type: "jali", crit: JALI.crit, ded: +cat().jaliDed || JALI.ded, groupDv: "", subDv: "" })); else jali(w); close(); } }, "ލަޙްނު ޖަލީ", h("small", "لحن جلي")),
+          JALI_TYPES.map(t => h("button", { onclick: () => { addError(w, withLetter({ type: "jali", crit: JALI.crit, ded: +cat().jaliDed || 1, sub: t.key, subDv: t.dv, subAr: t.ar })); close(); } }, t.dv, h("small", t.ar))))),
         KHAFI_GROUPS.map(g => h("div.grp", h("h4", `${g.dv} — ${g.ar}`), h("div.opts", g.items.map(([k, ar, dv]) => h("button", { onclick: () => {
           const ki = khafiInfo(g.key, k);
-          addError(w, { type: "khafi", group: g.key, groupDv: g.dv, sub: k, subDv: dv, subAr: ar, crit: ki.crit, ded: +(cat().khafiDed ?? ki.ded) });
+          addError(w, withLetter({ type: "khafi", group: g.key, groupDv: g.dv, sub: k, subDv: dv, subAr: ar, crit: ki.crit, ded: +(cat().khafiDed ?? ki.ded) }));
           close();
         } }, dv, h("small", ar)))))));
       let closer = null;
@@ -208,25 +230,11 @@ export async function live(view) {
       if (!D) D = { errors: [], adj: {}, note: "" };
       const qs = L.questions || [];
       if (L.phase === "grid") {
-        // same grid as the student screen — a judge may open the number the student says
-        const picks = L.picks || [];
-        const gb = h("div.gridbox.judge-grid", { style: { gridTemplateColumns: `repeat(${(L.grid || []).length > 30 ? 8 : (L.grid || []).length > 20 ? 6 : 5}, 1fr)` } }, (L.grid || []).map(g => {
-          const i = picks.indexOf(g.n);
-          const b = h("button" + (i >= 0 ? ".taken" : ""), { disabled: i >= 0 }, g.n, i >= 0 ? h("span.sub", "ސުވާލު " + (i + 1)) : null);
-          if (i < 0) b.onclick = async () => {
-            if (gb.dataset.busy) return; gb.dataset.busy = "1";
-            b.classList.add("picking"); gb.querySelectorAll("button").forEach(x => { if (x !== b) x.classList.add("dim"); });
-            const r = await pickQuestion(ses.id, g.n);
-            if (r !== "ok") { delete gb.dataset.busy; b.classList.remove("picking"); gb.querySelectorAll("button.dim").forEach(x => x.classList.remove("dim"));
-              if (r === "taken") toast("އެ ނަންބަރު ހޮވިފައި", "warn"); else if (r === "full") toast("ސުވާލުގެ ޢަދަދު ހަމަވެއްޖެ", "warn"); }
-          };
-          return b;
-        }));
+        // same grid as the student screen — a judge may open the number(s) the student says
         main.appendChild(h("div.card",
           h("div.row.between", h("h3", { style: { margin: 0 } }, qs.length ? `${qs.length + 1} ވަނަ ސުވާލުގެ ނަންބަރު` : "ދަރިވަރު ނަންބަރު ހޮވަނީ"),
-            h("span.tag.gold", `${picks.length} / ${L.qCount || 1}`)),
-          h("p.small.muted", "ދަރިވަރު ބުނާ ނަންބަރަށް މިތަނުން ފިއްތާލެވޭނެ. ފިތާލުމާއެކު ދަރިވަރުގެ ސްކްރީނުގައިވެސް އެ ނަންބަރު ފެނި، ސުވާލު ހުޅުވޭނެ."),
-          gb));
+            h("span.tag.gold", `${qs.length} / ${L.qCount || 1}`)),
+          gridPicker(L, ses.id)));
       }
       if (!qs.length) { if (L.phase !== "grid") main.appendChild(h("div.card", empty("ސުވާލު ނެތް"))); }
       else {
@@ -234,7 +242,7 @@ export async function live(view) {
         const q = qs[viewQ];
         main.appendChild(h("div.qbar",
           h("span.qn", `ސުވާލު ${viewQ + 1} / ${L.qCount || qs.length}`),
-          (L.picks || [])[viewQ] ? h("span.tag.gold", `ނަންބަރު ${(L.picks || [])[viewQ]}`) : null,
+          numOf(L, viewQ) !== "" ? h("span.tag.gold", `ނަންބަރު ${numOf(L, viewQ)}`) : null,
           h("div.qtabs", qs.map((x, i) => h("button" + (i === viewQ ? ".view" : "") + (i === L.qIndex ? ".cur" : ""), { onclick: () => { viewQ = i; draw(); } },
             `${i + 1}${i === L.qIndex ? " ●" : ""}`))),
           h("span.grow", portionEl(q, L.branch === "hifz")),

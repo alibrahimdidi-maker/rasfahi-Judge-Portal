@@ -222,6 +222,10 @@ export async function report(view) {
           { caption: "ފާހަގަކުރި ކުށް" }), `ޖަޖުން ފާހަގަކުރި ކުށްތައް (${judged} ޝީޓް)`) +
         section("ލަޙްނު ޚަފީ — ބައިތައް", donut(groups, { caption: "ޚަފީ" })) + `</div>`);
       out.push(section("އެންމެ ގިނައިން ކުރެވުނު ކުށްތައް", barsH(top, { dec: 0 })));
+      const lett = cnt(errs.filter(e => e.letter), e => e.letter).slice(0, 20);
+      if (lett.length) out.push(section("އެންމެ ގިނައިން ނުބައިކޮށް ކިޔެވުނު އަކުރުތައް", barsH(lett.map((x, i) => ({ label: x.k, value: x.n,
+        sub: `ޖަލީ ${errs.filter(e => e.letter === x.k && e.type === "jali").length} • ޚަފީ ${errs.filter(e => e.letter === x.k && e.type === "khafi").length}`,
+        color: SERIES[i % SERIES.length] })), { dec: 0 }), "ޖަޖުން ކުށް ފާހަގަކުރިއިރު ހޮވި އަކުރުތައް"));
       out.push(`<div class="rep-grid2">` + section("ތަޖްވީދުގެ ޙުކުމްތައް", barsH(rules.map((g, i) => ({ label: KG[g].dv, value: khafi.filter(e => e.group === g).length, color: SERIES[i % SERIES.length] })), { dec: 0 })) +
         section("ޞިފަތައް", barsH(items("sifat"), { dec: 0 })) + `</div>`);
       out.push(`<div class="rep-grid2">` + section("އަކުރުގެ މަޚްރަޖު", barsH(items("makhraj"), { dec: 0 })) +

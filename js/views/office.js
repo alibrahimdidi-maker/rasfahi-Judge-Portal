@@ -867,7 +867,7 @@ async function sessionPackage(s, studs) {
 // Secretaries, judges and chief judges cannot edit or delete information by default.
 // A time-limited access is given here; the person opens it with the 6-digit code (given by phone)
 // + a fresh Google sign-in. It ends by itself and must be renewed. Everything is kept in the history.
-const SCOPE_DV = { students: "ދަރިވަރުންގެ މަޢުލޫމާތު", schedule: "ޝެޑިއުލް / ސެޝަން" };
+const SCOPE_DV = { students: "ދަރިވަރުންގެ މަޢުލޫމާތު", schedule: "ޝެޑިއުލް / ސެޝަން", marks: "ޖަޖުންގެ މާކްސް ވެއްދުން (ޕްލޭން B)" };
 export async function scheduleAccess(view) {
   const users = (await getDocs(collection(db, "users"))).docs.map(d => ({ id: d.id, ...d.data() }))
     .filter(u => u.active && ["secretary", "chief", "adminsec", "supervisor", "judge", "checkin"].includes(u.role));

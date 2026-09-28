@@ -7,7 +7,8 @@ import {
   loadCategories, loadSessions, catById, sessionLabel, photoTag, idCard, beep, starsEl, BRANCHES
 } from "../core.js";
 import { loadQuran, qLabelDv, renderPage, renderQuestion, describeSyllabus, portion } from "../quran.js";
-import { PHASE_DV, writeLive, admitStudent, pickQuestion, backToGrid, undoLastPick, finishReading, clearStage } from "../liveops.js";
+import { gridPicker } from "../gridpick.js";
+import { PHASE_DV, writeLive, admitStudent, pickQuestion, backToGrid, refreshGrid, numOf, undoLastPick, finishReading, clearStage } from "../liveops.js";
 
 export function portionBar(q, opts = {}) {
   const p = portion(q); if (!p) return null;
@@ -126,28 +127,28 @@ export async function control(view) {
       if (live.phase === "grid") {
         right.appendChild(h("div.card",
           h("h3", qs.length ? `ދަރިވަރު ${qs.length + 1} ވަނަ ސުވާލުގެ ނަންބަރު ހޮވަނީ` : "ދަރިވަރު ނަންބަރެއް ހޮވަނީ"),
-          h("p.small.muted", `ދަރިވަރަށް ހޮވޭނީ ${qn} ނަންބަރު. ދަރިވަރުގެ ސްކްރީނުން ނަންބަރަށް ފިތުމާއެކު ސުވާލު ހުޅުވޭނެ. ދަރިވަރަށް ނުފިތޭނަމަ މިތަނުން ފިއްތާލެވޭނެ.`),
-          h("div.gridbox", (live.grid || []).map(g => {
-            const i = (live.picks || []).indexOf(g.n);
-            return h("button" + (i >= 0 ? ".taken" : ""), { onclick: () => i < 0 && pick(g.n) }, g.n, i >= 0 ? h("span.sub", "ސުވާލު " + (i + 1)) : null);
-          })),
-          h("div.row", { style: { marginTop: "10px" } }, h("button.btn.ghost", { onclick: skip }, "⏭ ފަހަތަށް ލާ"))));
+          h("p.small.muted", `ދަރިވަރަށް ހޮވޭނީ ${qn} ނަންބަރު. ދަރިވަރުގެ ސްކްރީނުން ފިތުމުން ސުވާލު ހުޅުވޭނެ. ނުފިތޭނަމަ ދަރިވަރު ބުނާ ނަންބަރުތައް މިތަނުން އެއްފަހަރާ ހޮއްވަވާ.`),
+          gridPicker(live, sid),
+          h("div.row", { style: { marginTop: "10px" } },
+            h("button.btn", { onclick: async () => { if (await confirmBox("🔄 ގްރިޑް އަލުން", "އާ ނަންބަރުތަކަކާއެކު ގްރިޑް އަލުން ހަދާނެ. ކިޔެވި ސުވާލުތައް ނުގެއްލޭނެ.", "ހަދާ")) refreshGrid(ses, live); } }, "🔄 ގްރިޑް އަލުން"),
+            h("button.btn.ghost", { onclick: skip }, "⏭ ފަހަތަށް ލާ"))));
       }
       if (["reading", "scoring", "final"].includes(live.phase) && qs.length) {
         const qi = Math.max(0, Math.min(live.qIndex, qs.length - 1));
         const q = qs[qi];
         const card = h("div.card");
         card.append(h("div.qbar", h("span.qn", `ސުވާލު ${qi + 1} / ${qn}`),
-          (live.picks || [])[qi] ? h("span.tag.gold", `ނަންބަރު ${(live.picks || [])[qi]}`) : null, h("span.grow", portionBar(q)),
+          numOf(live, qi) !== "" ? h("span.tag.gold", `ނަންބަރު ${numOf(live, qi)}`) : null, h("span.grow", portionBar(q)),
           h("span.light." + (live.light === "go" ? "go" : "stop"))));
         if (live.phase === "reading") {
           const more = qs.length < qn;
           card.append(h("div.row", { style: { gap: "8px", marginBottom: "10px", flexWrap: "wrap" } },
             h("button.btn.green.lg", { onclick: () => { beep(988, 200); writeLive(ses, { light: "go", startedQ: live.qIndex }); }, disabled: live.light === "go" }, "▶ ފަށާ"),
             h("button.btn.red.lg", { onclick: () => { beep(440, 200); setLight(ses, "stop"); }, disabled: live.light !== "go" }, "■ ހުއްޓާ"),
-            more ? h("button.btn.primary.lg", { onclick: () => backToGrid(ses, live) }, `ދެން ސުވާލު ހޮވާ (${qs.length + 1}/${qn}) ▶`)
+            more ? h("button.btn.primary.lg", { onclick: () => backToGrid(ses, live) }, (live.pickQueue || []).length ? `ދެން ސުވާލު — ނަންބަރު ${live.pickQueue[0]} ▶` : `ދެން ސުވާލު ހޮވާ (${qs.length + 1}/${qn}) ▶`)
               : h("button.btn.blue.lg", { onclick: finish }, "✔ ނިމުނު"),
-            live.light !== "go" && live.startedQ !== live.qIndex ? h("button.btn.ghost", { onclick: () => undoLastPick(ses, live) }, "↩ ނަންބަރު ބާޠިލު") : null));
+            live.light !== "go" && live.startedQ !== live.qIndex ? h("button.btn.ghost", { onclick: () => undoLastPick(ses, live) }, "↩ ނަންބަރު ބާޠިލު") : null,
+            live.light !== "go" && live.startedQ !== live.qIndex ? h("button.btn.ghost", { onclick: async () => { if (await confirmBox("🔄 ގްރިޑް އަލުން", "މި ނަންބަރު ބާޠިލުކޮށް އާ ގްރިޑެއް ހަދާނެ.", "ހަދާ")) refreshGrid(ses, live); } }, "🔄 ގްރިޑް އަލުން") : null));
         } else {
           const allSaved = (ses.judges || []).every(j => jstat[j.email] && jstat[j.email].studentId === live.studentId && jstat[j.email].saved);
           card.append(h("div.row", { style: { marginBottom: "10px", flexWrap: "wrap" } },

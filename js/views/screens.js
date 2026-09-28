@@ -88,8 +88,8 @@ export async function studentScreen(view) {
         h("span", { style: { fontSize: "1.2vw", color: "var(--muted)" } }, "  •  " + (L.categoryName || ""))));
       // a number was chosen (by the student or at the judges' table): show it for a moment before the question opens
       if (on && prevL && prevL.studentId === L.studentId && prevL.phase === "grid" && L.phase === "reading"
-          && (L.picks || []).length > (prevL.picks || []).length && !localTap) {
-        flashN = (L.picks || [])[L.picks.length - 1]; flashUntil = Date.now() + 1800;
+          && (L.questions || []).length > (prevL.questions || []).length && !localTap) {
+        flashN = (L.qNums || L.picks || [])[(L.questions || []).length - 1]; flashUntil = Date.now() + 1800;
         clearTimeout(flashT); flashT = setTimeout(() => render(curL), 1850);
         beep(740, 120);
       }
@@ -122,10 +122,10 @@ export async function studentScreen(view) {
             picks.length ? `ސުވާލު ${picks.length + 1} — ނަންބަރެއް ހޮއްވަވާ` : "ނަންބަރެއް ހޮއްވަވާ",
             h("span", { style: { color: "var(--muted)", fontSize: "1.6vw" } }, `   (${picks.length} / ${qn})`)),
           h("div.scr-grid.pickable", { style: gridStyle((L.grid || []).length) }, (L.grid || []).map(g => {
-            const i = picks.indexOf(g.n);
-            const now = flashing && g.n === flashN;
-            const b = h("button" + (i >= 0 ? ".taken" : now ? ".picking" : flashing ? ".dim" : ""), { disabled: i >= 0 || flashing }, g.n,
-              i >= 0 ? h("small", "ސުވާލު " + (i + 1)) : null);
+            const i = picks.indexOf(g.n), off = (L.questions || []).length - (L.picks || []).length;
+            const now = flashing && g.n === flashN, queued = (L.pickQueue || []).includes(g.n);
+            const b = h("button" + (i >= 0 ? ".taken" : now ? ".picking" : queued ? ".queued" : flashing ? ".dim" : ""), { disabled: i >= 0 || flashing || queued }, g.n,
+              i >= 0 ? h("small", "ސުވާލު " + (off + i + 1)) : queued ? h("small", "ދެން") : null);
             if (i < 0 && !flashing) b.onclick = () => tap(g.n, L, b);
             return b;
           })),
@@ -138,7 +138,7 @@ export async function studentScreen(view) {
       if (hifz) {
         bodyEl.appendChild(h("div.center.hifz-blank",
           h("div", { style: { fontSize: "4.2vw", color: "var(--gold2)", fontWeight: 700 } }, "ނުބަލައި ކިޔެވުމުގެ ގޮފި"),
-          h("div", { style: { fontSize: "2.2vw", color: "var(--muted)", marginTop: "2vh" } }, `ސުވާލު ${L.qIndex + 1} / ${qn}` + ((L.picks || [])[L.qIndex] ? `  •  ނަންބަރު ${(L.picks || [])[L.qIndex]}` : ""))));
+          h("div", { style: { fontSize: "2.2vw", color: "var(--muted)", marginTop: "2vh" } }, `ސުވާލު ${L.qIndex + 1} / ${qn}` + ((L.qNums || L.picks || [])[L.qIndex] ? `  •  ނަންބަރު ${(L.qNums || L.picks || [])[L.qIndex]}` : ""))));
         return;
       }
       const p = portion(q);
@@ -148,7 +148,7 @@ export async function studentScreen(view) {
         h("span", "ފޮތް: ", h("b", p.juz)),
         h("span", "އާޔަތް: ", h("b", p.from === p.to ? p.from : `${p.from} – ${p.to}`)),
         h("span", "ޞަފުޙާ: ", h("b", p.page)),
-        h("span", `ސުވާލު ${L.qIndex + 1} / ${qn}`, (L.picks || [])[L.qIndex] ? `  •  ނަންބަރު ${(L.picks || [])[L.qIndex]}` : "")));
+        h("span", `ސުވާލު ${L.qIndex + 1} / ${qn}`, (L.qNums || L.picks || [])[L.qIndex] ? `  •  ނަންބަރު ${(L.qNums || L.picks || [])[L.qIndex]}` : "")));
       const txt = h("div.scr-text");
       mainEl.appendChild(txt);
       bodyEl.appendChild(h("div.scr-read.single", mainEl));
