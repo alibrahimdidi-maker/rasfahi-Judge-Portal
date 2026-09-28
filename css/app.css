@@ -719,3 +719,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .print-filters .field { margin: 0; } .print-filters .field span { font-size: 12px; color: var(--muted); }
 .print-count { padding: 8px 12px; border-radius: 10px; background: rgba(201,164,67,.1); border: 1px solid rgba(201,164,67,.4); margin-bottom: 8px; }
 .print-count b { color: var(--gold2); font-size: 16px; }
+/* registration: age at the deadline and fit with the age group */
+.age-show { min-height: 42px; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line2); background: var(--input); }
+.age-show b { font-size: 20px; color: var(--gold2); } .age-show small { color: var(--muted); }
+.age-fit .fit { margin: 4px 0 10px; padding: 10px 12px; border-radius: 10px; font-size: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.age-fit .fit.ok { background: rgba(46,204,113,.14); border: 1px solid var(--green); color: var(--green2); }
+.age-fit .fit.bad { background: rgba(255,77,94,.12); border: 1px solid var(--red); color: var(--red2); }
+.age-fit .fit b { color: inherit; }
+.age-fit .fit-near { color: var(--text); font-size: 13px; }
