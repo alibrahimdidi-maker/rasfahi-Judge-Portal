@@ -3,12 +3,13 @@
 //  Step 1: email + full name + mobile  →  Step 2: the rest of the form opens.
 //  The same three details re-open the same application (to fix and resubmit).
 // ============================================================
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { initializeApp } from "./firebase.bundle.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp } from "./firebase.bundle.js";
 import { firebaseConfig } from "./firebase-config.js";
 
 try { const t = localStorage.getItem("rasfahiTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 
+window.__rasfahiBoot = true;
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const root = document.getElementById("reg");

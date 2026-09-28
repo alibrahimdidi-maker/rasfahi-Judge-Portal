@@ -1,15 +1,15 @@
 // ============================================================
 //  RASFAHI — core: Firebase, auth, roles, helpers, UI primitives
 // ============================================================
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { initializeApp } from "./firebase.bundle.js";
 import {
   getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+} from "./firebase.bundle.js";
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where,
   onSnapshot, serverTimestamp, runTransaction, writeBatch, arrayUnion, arrayRemove, increment, Timestamp
-} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+} from "./firebase.bundle.js";
 import { firebaseConfig, BOOTSTRAP_SUPERADMIN, PUBLIC_BASE_URL } from "./firebase-config.js";
 import { applyTheme, DEFAULT_THEME } from "./frames.js";
 

@@ -73,8 +73,18 @@ function sampleCategories() {
   }));
 }
 
+// the competition's own categories, plus sample ones for any branch it lacks,
+// so a test always covers both ބަލައިގެން (mushaf) and ނުބަލައި (hifz)
+function withBothBranches(real) {
+  const sample = sampleCategories();
+  if (!real.length) return sample;
+  const out = [...real];
+  ["mushaf", "hifz"].forEach(b => { if (!real.some(c => c.branch === b)) out.push(...sample.filter(c => c.branch === b)); });
+  return out;
+}
+
 // ---------- build N students (+ optional marks) ----------
-export function buildStudents(count, cats, withMarks) {
+export function buildStudents(count, cats, withMarks, rubOverride) {
   const r = rng(20261101);
   const year = new Date().getFullYear();
   const out = [];
@@ -98,7 +108,7 @@ export function buildStudents(count, cats, withMarks) {
       guardianName: `${pick(M_FIRST, r)[0]} ${lDv}`, guardianPhone: String(9000000 + ((n * 6151) % 999999))
     };
     if (withMarks) {
-      const rub = cat.rubric && cat.rubric.length ? cat.rubric : SAMPLE_RUBRIC;
+      const rub = rubOverride || (cat.rubric && cat.rubric.length ? cat.rubric : SAMPLE_RUBRIC);
       const skill = 0.62 + r() * 0.36;                       // how good this reciter is
       s.judges = JUDGES.map(([jName], j) => {
         const criteria = {};
@@ -135,6 +145,27 @@ function saveCSV(name, rows) {
   a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
+// Excel (.xlsx) download. Formula cells are given as { f, v } so the file opens with values
+// already shown and Excel keeps recalculating them when marks are typed in.
+const SHEETJS = "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
+async function saveXLSX(name, rows, opts = {}) {
+  let XLSX;
+  try { XLSX = await import(SHEETJS); }
+  catch (e) { saveCSV(name.replace(/\.xlsx$/, ".csv"), rows.map(r => r.map(c => (c && typeof c === "object" ? "=" + c.f : c)))); return "csv"; }
+  const aoa = rows.map(r => r.map(c => {
+    if (c && typeof c === "object") return c.v === "" || c.v == null ? { t: "s", v: "", f: c.f } : { t: "n", v: c.v, f: c.f };
+    return c;
+  }));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = (opts.widths || []).map(w => ({ wch: w }));
+  if (opts.headerRows) ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: opts.headerRows - 1, c: 0 }, e: { r: rows.length - 1, c: rows[0].length - 1 } }) };
+  const wb = XLSX.utils.book_new();
+  wb.Workbook = { Views: [{ RTL: true }] };               // right-to-left sheet for Dhivehi
+  XLSX.utils.book_append_sheet(wb, ws, opts.sheet || "Students");
+  if (opts.notes) { const ns = XLSX.utils.aoa_to_sheet(opts.notes); ns["!cols"] = [{ wch: 28 }, { wch: 90 }]; XLSX.utils.book_append_sheet(wb, ns, "Notes"); }
+  XLSX.writeFile(wb, name, { compression: true });
+  return "xlsx";
+}
 const colLetter = (n) => { let s = ""; n++; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
 
 // Student columns — the SAME column names the importer reads, so a filled file can be imported back.
@@ -152,13 +183,12 @@ const studentCells = (s) => [s.regNo, s.nid, s.name, s.nameEn, s.dob, s.gender, 
 // Sample list download. withMarks=false leaves the marks empty but keeps Excel formulas,
 // so typing marks into the sheet immediately shows how totals, final score and stars are worked out.
 export async function downloadSampleList(withMarks, count = 2000) {
-  let cats = await loadCategories();
-  if (!cats.length) cats = sampleCategories();
-  const list = buildStudents(count, cats, true);
+  const cats = withBothBranches(await loadCategories());
   const rub = cats[0].rubric && cats[0].rubric.length ? cats[0].rubric : SAMPLE_RUBRIC;
   // one rubric layout per file: if categories use different rubrics, use the default sample rubric columns
   const sameRub = cats.every(c => JSON.stringify((c.rubric || []).map(r => r.key)) === JSON.stringify(rub.map(r => r.key)));
   const R = sameRub ? rub : SAMPLE_RUBRIC;
+  const list = buildStudents(count, cats, true, sameRub ? null : R);
   const head1 = STUDENT_COLS.map(c => c[0]), head2 = STUDENT_COLS.map(c => c[1]);
   const base = head1.length;
   JUDGES.forEach((_, j) => {
@@ -179,30 +209,45 @@ export async function downloadSampleList(withMarks, count = 2000) {
       const jd = (s.judges || [])[j];
       R.forEach(k => cells.push(withMarks && jd ? (jd.criteria[k.key] ?? "") : ""));
       const a = colLetter(start) + excelRow, b = colLetter(start + R.length - 1) + excelRow;
-      cells.push(`=IF(COUNT(${a}:${b})=0,"",SUM(${a}:${b}))`);
+      cells.push({ f: `IF(COUNT(${a}:${b})=0,"",SUM(${a}:${b}))`, v: withMarks && jd ? jd.total : "" });
       totRefs.push(colLetter(start + R.length) + excelRow);
     });
     const tr = totRefs.join(",");
-    const fin = trimmed
-      ? `=IF(COUNT(${tr})=0,"",IF(COUNT(${tr})>=5,ROUND((SUM(${tr})-MAX(${tr})-MIN(${tr}))/(COUNT(${tr})-2),2),ROUND(AVERAGE(${tr}),2)))`
-      : `=IF(COUNT(${tr})=0,"",ROUND(AVERAGE(${tr}),2))`;
+    const fin = { f: trimmed
+      ? `IF(COUNT(${tr})=0,"",IF(COUNT(${tr})>=5,ROUND((SUM(${tr})-MAX(${tr})-MIN(${tr}))/(COUNT(${tr})-2),2),ROUND(AVERAGE(${tr}),2)))`
+      : `IF(COUNT(${tr})=0,"",ROUND(AVERAGE(${tr}),2))`, v: withMarks ? s.final : "" };
     const F = colLetter(base + JUDGES.length * per) + excelRow;
-    cells.push(fin, `=IF(${F}="","",IF(${F}>=${th[4]},5,IF(${F}>=${th[3]},4,IF(${F}>=${th[2]},3,IF(${F}>=${th[1]},2,IF(${F}>=${th[0]},1,0))))))`,
+    cells.push(fin, { f: `IF(${F}="","",IF(${F}>=${th[4]},5,IF(${F}>=${th[3]},4,IF(${F}>=${th[2]},3,IF(${F}>=${th[1]},2,IF(${F}>=${th[0]},1,0))))))`, v: withMarks ? s.stars : "" },
       withMarks ? s.rank : "");
     rows.push(cells);
   });
-  saveCSV(withMarks ? `rasfahi_sample_${count}_with_marks.csv` : `rasfahi_sample_${count}_marks_empty.csv`, rows);
+  const widths = [11, 11, 24, 22, 13, 8, 30, 20, 30, 11, 30, 30, 12, 10, 34, 12, 24, 13, ...Array(JUDGES.length * per).fill(9), 11, 7, 7];
+  const notes = [
+    ["RASFAHI", withMarks ? "ނަމޫނާ ލިސްޓު — 5 ޖަޖުންގެ މާކްސް އާއެކު" : "ނަމޫނާ ލިސްޓު — މާކްސް ހުސްކޮށް"],
+    ["ދަރިވަރުން", String(list.length)],
+    ["މާކްސް ދޭ ބައިތައް", R.map(k => `${k.name} (${k.max})`).join("، ")],
+    ["ފައިނަލް", trimmed ? "5 ޖަޖުން ނުވަތަ އެއަށްވުރެ ގިނަނަމަ އެންމެ މަތީ އަދި އެންމެ ދަށު މާކްސް ދޫކޮށް އެވަރެޖު" : "ހުރިހާ ޖަޖުންގެ އެވަރެޖު"],
+    ["ތަރި", `1★ ${th[0]}+ • 2★ ${th[1]}+ • 3★ ${th[2]}+ • 4★ ${th[3]}+ • 5★ ${th[4]}+`],
+    ["ބޭނުންކުރާ ގޮތް", withMarks ? "ނަތީޖާ ހެދޭ ގޮތް ބަލާލުމަށް. ޖުމްލަ، ފައިނަލް އަދި ތަރި ހިސާބުކުރަނީ ފޯމިއުލާއިން." : "ޖަޖުންގެ ގޮޅިތަކުގައި މާކްސް ލިޔުއްވުމުން ޖުމްލަ، ފައިނަލް އަދި ތަރި ފެންނާނެ."],
+    ["ސޮފްޓްވެއަރަށް ވެއްދުން", "މި ފައިލު 'ދަރިވަރުން' ޓެބުގެ '📥 ފައިލު ހޮވާ' އިން ވެއްދެވޭނެ (ދަރިވަރުންގެ މަޢުލޫމާތު)."]
+  ];
+  await saveXLSX(withMarks ? `rasfahi_sample_${count}_with_marks.xlsx` : `rasfahi_sample_${count}_marks_empty.xlsx`, rows,
+    { widths, headerRows: 2, sheet: "Students", notes });
   return list.length;
 }
 
 // Empty sheet for Google Forms / Excel lists (only the student columns + one example row)
-export function downloadImportTemplate() {
-  saveCSV("rasfahi_students_import_template.csv", [
+export async function downloadImportTemplate() {
+  await saveXLSX("rasfahi_students_import_template.xlsx", [
     STUDENT_COLS.map(c => c[0]), STUDENT_COLS.map(c => c[1]),
     ["", "A123456", "ޢަލީ އަޙްމަދު", "Ali Ahmed", "2012-05-14", "M", "ނޫރާނީވިލާ، ގން. ފުވައްމުލައް", "ގން. ފުވައްމުލައް",
       "ބަހާރުގެ، މާލެ", "7771234", "ali@example.mv", "ބަލައިގެން — 13 އަހަރުން ދަށް", "ބަލައިގެން", "U13",
       "މަޖީދިއްޔާ ސްކޫލް", "School", "އަޙްމަދު ޢަލީ", "9771234"]
-  ]);
+  ], { widths: [11, 11, 24, 22, 13, 8, 30, 20, 30, 11, 30, 30, 12, 10, 34, 12, 24, 13], sheet: "Students",
+    notes: [["ކޮލަމްތައް", "ފުރަތަމަ ދެ ލައިން ނުފޮހެލާ. ތިންވަނަ ލައިނުން ފެށިގެން ކޮންމެ ދަރިވަރަކަށް އެއް ލައިން."],
+      ["category", "ސޮފްޓްވެއަރުގައި ހުރި ބައިގެ ނަން ހަމަ އެގޮތަށް ލިޔުއްވާ."],
+      ["gender", "M = ފިރިހެން، F = އަންހެން"], ["dob", "YYYY-MM-DD (މިސާލު 2012-05-14)"],
+      ["instType", "School / University / QuranClass / Club / Office / Private"]] });
 }
 
 // ---------- load sample data into Firestore ----------
@@ -223,13 +268,14 @@ export async function loadSampleIntoFirestore({ count = 300, withMarks = false, 
   const report = { categories: 0, sessions: 0, students: 0, scores: 0, results: 0, scoreError: "" };
 
   // 1) categories — use the competition's own; create the 8 sample ones if there are none
-  let cats = await loadCategories(true);
-  if (!cats.length) {
-    cats = sampleCategories();
-    await commitAll(cats.map(({ id, ...c }) => [doc(db, "categories", `${cid}__${id}`), { ...c, competitionId: cid, dummy: true, updatedAt: serverTimestamp() }]));
-    cats = cats.map(c => ({ ...c, id: `${cid}__${c.id}` }));
-    report.categories = cats.length; cache.categories = null;
+  const real = await loadCategories(true);
+  const merged = withBothBranches(real);
+  const added = merged.filter(c => !real.includes(c));        // sample categories this competition was missing
+  if (added.length) {
+    await commitAll(added.map(({ id, ...c }) => [doc(db, "categories", `${cid}__${id}`), { ...c, competitionId: cid, dummy: true, updatedAt: serverTimestamp() }]));
+    report.categories = added.length; cache.categories = null;
   }
+  const cats = merged.map(c => (real.includes(c) ? c : { ...c, id: `${cid}__${c.id}` }));
 
   // 2) judges & chief — real users if they exist (so they can log in and mark), otherwise placeholders
   const users = (await getDocs(collection(db, "users"))).docs.map(d => ({ email: d.id, ...d.data() })).filter(u => u.active);

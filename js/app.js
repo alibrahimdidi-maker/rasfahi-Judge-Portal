@@ -9,7 +9,7 @@ import {
 // apply the last-used colour theme before anything draws (settings load later)
 try { const t = localStorage.getItem("rasfahiTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 
-const V = (file, fn) => async () => (await import(`./views/${file}.js?v=5`))[fn];
+const V = (file, fn) => async () => (await import(`./views/${file}.js?v=6`))[fn];
 
 // Tabs for each role. Only what the super admin gave to the role is available.
 const NAV = {
@@ -74,6 +74,7 @@ const NAV = {
 const root = $("#app");
 
 function loginView(msg) {
+  window.__rasfahiBoot = true;
   root.innerHTML = "";
   // try to read comp name from localStorage (set after a successful login)
   let orgName = ""; try { orgName = localStorage.getItem("rasfahiOrg") || ""; } catch(e){}
@@ -149,6 +150,7 @@ async function boot(user) {
 }
 
 function shell() {
+  window.__rasfahiBoot = true;
   const tabs = NAV[S.me.role] || [];
   const isScreen = S.me.role.startsWith("screen_");
   root.innerHTML = "";
@@ -189,6 +191,7 @@ function shell() {
 }
 
 onAuthStateChanged(auth, (user) => {
+  window.__rasfahiBoot = true;
   clearSubs();
   if (!user) return loginView();
   if (!user.emailVerified) return loginView("ގޫގުލް އީމެއިލް ވެރިފައި ނުވޭ");
