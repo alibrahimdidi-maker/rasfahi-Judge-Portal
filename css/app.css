@@ -772,3 +772,15 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .man-krow { display: flex; align-items: center; gap: 8px; margin: 4px 0; } .man-krow > span { min-width: 110px; font-size: 13px; }
 .man-kgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 4px 14px; margin-top: 6px; }
 .man-sign { margin-top: 10px; padding: 10px; border: 2px dashed var(--gold); border-radius: 10px; font-size: 15px; }
+.net-pill { font-size: 12px; padding: 3px 10px; border-radius: 20px; cursor: pointer; white-space: nowrap; border: 1px solid; }
+.net-pill.on { color: var(--green2); border-color: rgba(94,230,160,.5); background: rgba(46,204,113,.1); }
+.net-pill.wait { color: #ffc062; border-color: #ff9f1c; background: rgba(255,159,28,.12); }
+.net-pill.off { color: #fff; border-color: var(--red); background: rgba(255,77,94,.35); animation: netblink 1.6s infinite; }
+@keyframes netblink { 50% { opacity: .55; } }
+.trial-card { border: 2px dashed var(--gold); margin-top: 14px; }
+.trial-status { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--panel2); font-size: 15px; color: var(--gold2); }
+/* smooth live screens */
+.screen .scr-body > * { animation: rfade .28s ease-out; }
+@keyframes rfade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.upd-banner { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; gap: 12px; align-items: center;
+  padding: 10px 16px; border-radius: 14px; background: var(--panel2); border: 2px solid var(--gold); box-shadow: 0 10px 30px rgba(0,0,0,.45); color: var(--gold2); }
