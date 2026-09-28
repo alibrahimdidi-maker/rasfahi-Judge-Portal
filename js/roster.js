@@ -38,15 +38,19 @@ export async function syncRoster(ses) {
 export function datedSessionPicker(sessions, key, onChange) {
   const dates = [...new Set(sessions.map(s => s.date).filter(Boolean))].sort();
   const t = today();
+  // a session that is running now wins; then the one chosen last time; then today / the next day
+  const liveSes = sessions.filter(s => s.status === "live").sort((a, b) => String(b.date + b.time).localeCompare(String(a.date + a.time)))[0];
   const savedSes = sessions.find(s => s.id === sessionStorage.getItem(key));
-  const defDate = savedSes ? savedSes.date : dates.includes(t) ? t : (dates.find(d => d >= t) || dates[dates.length - 1] || "");
+  if (liveSes && (!savedSes || savedSes.status !== "live")) sessionStorage.setItem(key, liveSes.id);
+  const pickSes = liveSes && (!savedSes || savedSes.status !== "live") ? liveSes : savedSes;
+  const defDate = pickSes ? pickSes.date : dates.includes(t) ? t : (dates.find(d => d >= t) || dates[dates.length - 1] || "");
   const dSel = select(dates.map(d => [d, `${dayName(d)} ${d}${d === t ? " (މިއަދު)" : ""}`]), defDate);
   const sSel = select([["", "— ސެޝަން ހޮވާ —"]], "");
   const fill = () => {
     const list = sessions.filter(s => s.date === dSel.value).sort((a, b) => String(a.time).localeCompare(String(b.time)));
     sSel.innerHTML = "";
     sSel.appendChild(h("option", { value: "" }, list.length ? "— ސެޝަން ހޮވާ —" : "މި ދުވަހު ސެޝަނެއް ނެތް"));
-    list.forEach(s => sSel.appendChild(h("option", { value: s.id }, `${s.time || ""} • ${s.name}${s.venue ? " • " + s.venue : ""}`)));
+    list.forEach(s => sSel.appendChild(h("option", { value: s.id }, `${s.status === "live" ? "🔴 ލައިވް • " : ""}${s.time || ""} • ${s.name}${s.venue ? " • " + s.venue : ""}`)));
     const keep = list.find(s => s.id === sessionStorage.getItem(key)) || (list.length === 1 ? list[0] : null);
     sSel.value = keep ? keep.id : "";
   };

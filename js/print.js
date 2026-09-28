@@ -54,17 +54,24 @@ export function noticeBoardHTML(students, sessionsById = {}, comp = {}) {
 }
 
 /* ---- session judge table (all students × rubric, for judge's desk) ---- */
-export function sessionJudgeTableHTML(students, cat, session, judgeSlot = "") {
+export function sessionJudgeTableHTML(students, cat, session, judge = {}) {
   const rub = (cat && cat.rubric) || [];
   const total = rub.reduce((a, r) => a + (+r.max || 0), 0);
-  return `<h3 style="text-align:center">ސެޝަން ޖަދުވަލު — ޖަޖު ${esc(String(judgeSlot))}</h3>
-    <div style="text-align:center;margin-bottom:6px">${esc(session ? session.name+" "+session.date+(session.venue ? " "+session.venue : "") : "")}</div>
+  const j = typeof judge === "object" ? judge : { slot: judge, name: "" };
+  const dayDv = (iso) => { const d = new Date((iso || "") + "T00:00:00"); return isNaN(d) ? "" : ["އާދިއްތަ", "ހޯމަ", "އަންގާރަ", "ބުދަ", "ބުރާސްފަތި", "ހުކުރު", "ހޮނިހިރު"][d.getDay()]; };
+  return `<div class="jt-head">
+      <div class="jt-title">ޖަޖުގެ ސެޝަން ޖަދުވަލު</div>
+      <div class="jt-judge">ޖަޖު <b>${esc(String(j.slot || ""))}</b>${j.name ? ` — <bdi>${esc(j.name)}</bdi>` : ""}</div>
+      ${session ? `<div class="jt-ses"><bdi>${esc(session.name)}</bdi> • ${esc(dayDv(session.date))} <bdi>${esc(session.date || "")}</bdi> • ${esc(session.time || "")}${session.venue ? " • " + esc(session.venue) : ""}</div>` : ""}
+      ${cat ? `<div class="jt-ses small">ބައި: <bdi>${esc(cat.name || "")}</bdi> • ${students.length} ދަރިވަރުން</div>` : ""}
+    </div>
     <table><thead><tr><th class="num">#</th><th>ނަން</th><th>ރެޖި</th>
-    ${rub.map(r=>`<th class="num" style="font-size:9px;padding:2px">${esc(r.name)}<br><span style="font-weight:400">(${r.max})</span></th>`).join("")}
-    <th class="num">${esc(String(total))}</th></tr></thead><tbody>
-    ${students.map((s,i)=>`<tr><td class="num">${s.order||i+1}</td><td>${esc(s.name)}</td><td>${esc(s.regNo||"")}</td>
-    ${rub.map(()=>"<td></td>").join("")}<td></td></tr>`).join("")}
-    </tbody></table>${sigBlock(["ޖަޖުގެ ނަން","ސޮއި","ތާރީޚް"])}`;
+    ${rub.map(r => `<th class="num" style="font-size:9px;padding:2px">${esc(r.name)}<br><span style="font-weight:400">(${r.max})</span></th>`).join("")}
+    <th class="num">ޖުމްލަ<br>(${esc(String(total))})</th></tr></thead><tbody>
+    ${students.map((s, i) => `<tr><td class="num">${s.order || i + 1}</td><td><bdi>${esc(s.name)}</bdi></td><td class="ltr">${esc(s.regNo || "")}</td>
+    ${rub.map(() => "<td></td>").join("")}<td></td></tr>`).join("")}
+    </tbody></table>
+    <div class="jt-sign"><div>ޖަޖުގެ ނަން: <bdi>${esc(j.name || "")}</bdi></div><div>ސޮއި: ______________</div><div>ތާރީޚް: ______________</div></div>`;
 }
 
 /* ---- ceremony (closing event) print ---- */
@@ -136,6 +143,11 @@ img.ph { width: 34px; height: 40px; object-fit: cover; }
 .a5sig { display: flex; gap: 30px; margin-top: 6px; font-size: 11px; }
 .a5sig > div { border-top: 1px solid #000; padding-top: 3px; }
 /* notice board */
+/* judges' session table */
+.jt-head { text-align: center; border: 2px solid #000; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; line-height: 1.8; }
+.jt-title { font-size: 16px; font-weight: 700; } .jt-judge { font-size: 15px; }
+.jt-sign { display: flex; justify-content: space-between; gap: 20px; margin-top: 16px; padding-top: 6px; border-top: 1px solid #000; }
+thead { display: table-header-group; } tr { page-break-inside: avoid; }
 /* ceremony */
 .ceremony-hdr { text-align: center; border-bottom: 3px double #000; margin-bottom: 10px; padding-bottom: 8px; }
 .rank1 td { background: #fff9e6; font-weight: 700; }

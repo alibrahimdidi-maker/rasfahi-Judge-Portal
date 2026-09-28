@@ -17,8 +17,8 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 let _db;
 try {
-  _db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-} catch (e) { _db = initializeFirestore(app, {}); }
+  _db = initializeFirestore(app, { ignoreUndefinedProperties: true, localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+} catch (e) { _db = initializeFirestore(app, { ignoreUndefinedProperties: true }); }
 export const db = _db;
 export {
   doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where,

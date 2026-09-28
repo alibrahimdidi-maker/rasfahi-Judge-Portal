@@ -70,8 +70,8 @@ const INSTITUTIONS = {
   Private: ["އަމިއްލަ ގޮތުން"]
 };
 const INST_CYCLE = ["School","School","School","University","QuranClass","Club","Private","School","Office","School"];
-const JUDGES = [["ޖަޖު 1 — ޝައިޚް އަޙްމަދު ޝާފިޢު","judge1"],["ޖަޖު 2 — ޝައިޚް މުޙައްމަދު ރަޝީދު","judge2"],
-  ["ޖަޖު 3 — ޝައިޚް އިބްރާހީމް ނާޞިރު","judge3"],["ޖަޖު 4 — ޝައިޚާ ފާޠިމަތު ސަޢީދު","judge4"],["ޖަޖު 5 — ޝައިޚް ޔޫސުފް ވަޙީދު","judge5"]];
+const JUDGES = [["ޝައިޚް އަޙްމަދު ޝާފިޢު","judge1"],["ޝައިޚް މުޙައްމަދު ރަޝީދު","judge2"],
+  ["ޝައިޚް އިބްރާހީމް ނާޞިރު","judge3"],["ޝައިޚާ ފާޠިމަތު ސަޢީދު","judge4"],["ޝައިޚް ޔޫސުފް ވަޙީދު","judge5"]];
 
 // the marking categories the user asked for (used when a competition has no categories yet)
 export const SAMPLE_RUBRIC = [
@@ -224,8 +224,8 @@ const studentCells = (s) => [s.regNo, s.nid, s.name, s.nameEn, s.dob, s.gender, 
 
 // Sample list download. withMarks=false leaves the marks empty but keeps Excel formulas,
 // so typing marks into the sheet immediately shows how totals, final score and stars are worked out.
-export async function downloadSampleList(withMarks, count = 2000) {
-  const cats = withBothBranches(await loadCategories());
+export async function downloadSampleList(withMarks, count = 2000, allAges = true) {
+  const cats = allAges ? sampleCategories() : withBothBranches(await loadCategories());
   const rub = cats[0].rubric && cats[0].rubric.length ? cats[0].rubric : SAMPLE_RUBRIC;
   // one rubric layout per file: if categories use different rubrics, use the default sample rubric columns
   const sameRub = cats.every(c => JSON.stringify((c.rubric || []).map(r => r.key)) === JSON.stringify(rub.map(r => r.key)));
@@ -304,14 +304,15 @@ async function commitAll(ops, onProgress) {
   }
 }
 
-export async function loadSampleIntoFirestore({ count = 300, withMarks = false, onProgress } = {}) {
+export async function loadSampleIntoFirestore({ count = 300, withMarks = false, onProgress, startDate = "", endDate = "", perDay = 3, allAges = true } = {}) {
   const cid = S.settings.activeCompetitionId;
   if (!cid) throw new Error("ފުރަތަމަ ސެޓިންގްސް އިން ހިނގަމުންދާ މުބާރާތެއް ހޮއްވަވާ");
   const report = { categories: 0, sessions: 0, students: 0, scores: 0, results: 0, scoreError: "" };
 
   // 1) categories — use the competition's own; create the 8 sample ones if there are none
   const real = await loadCategories(true);
-  const merged = withBothBranches(real);
+  // allAges: every age group × both branches (+ whole Quran) as sample categories — tests the whole system
+  const merged = allAges ? [...real.filter(c => c.dummy), ...sampleCategories().filter(sc => !real.some(r => r.id === `${cid}__${sc.id}`))] : withBothBranches(real);
   const added = merged.filter(c => !real.includes(c));        // sample categories this competition was missing
   if (added.length) {
     await commitAll(added.map(({ id, ...c }) => [doc(db, "categories", `${cid}__${id}`), { ...c, competitionId: cid, dummy: true, updatedAt: serverTimestamp() }]));
@@ -322,26 +323,44 @@ export async function loadSampleIntoFirestore({ count = 300, withMarks = false, 
   // 2) judges & chief — real users if they exist (so they can log in and mark), otherwise placeholders
   const users = (await getDocs(collection(db, "users"))).docs.map(d => ({ email: d.id, ...d.data() })).filter(u => u.active);
   const realJudges = users.filter(u => u.role === "judge").slice(0, 5);
+  // with no judge accounts yet, you (super admin) are judge 1 — use 🔀 to work as a judge
+  if (!realJudges.length) realJudges.push({ email: S.me.email, name: S.me.name || S.me.email });
   const judges = JUDGES.map(([name, key], i) => realJudges[i]
     ? { slot: i + 1, email: realJudges[i].email, name: realJudges[i].name || name }
     : { slot: i + 1, email: `${key}@example.mv`, name });
-  const chief = users.find(u => u.role === "chief");
-  const chiefEmail = chief ? chief.email : "", chiefName = chief ? chief.name : "";
+  const chief = users.find(u => u.role === "chief") || { email: S.me.email, name: S.me.name || S.me.email };
+  const chiefEmail = chief.email, chiefName = chief.name || "";
 
-  // 3) students + one session per category
+  // 3) students, then sessions spread over the days: perDay sessions a day between startDate and endDate
   const list = buildStudents(count, cats, withMarks);
-  const today = new Date();
-  const sessions = cats.map((c, i) => {
-    const d = new Date(today.getTime() + i * 86400000).toISOString().slice(0, 10);
-    return { id: `${cid}__dummyses_${i + 1}`, competitionId: cid, name: `ނަމޫނާ ސެޝަން ${i + 1} — ${c.name}`, date: d,
-      time: "09:00", venue: `ހޯލް ${i + 1}`, categoryIds: [c.id], chiefEmail, chiefName, judges, judgeEmails: judges.map(j => j.email),
-      status: withMarks ? "closed" : "planned", order: [], dummy: true, createdAt: serverTimestamp() };
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const d0 = startDate ? new Date(startDate + "T00:00:00") : new Date(Date.now() + 86400000);
+  const d1 = endDate ? new Date(endDate + "T00:00:00") : new Date(d0.getTime() + 31 * 86400000);
+  const TIMES = [["09:00", "08:30"], ["13:30", "13:00"], ["16:30", "16:00"], ["20:00", "19:30"]].slice(0, Math.max(1, Math.min(4, +perDay || 3)));
+  const slots = [];
+  for (let d = new Date(d0); d <= d1; d = new Date(d.getTime() + 86400000)) TIMES.forEach(([t, r], k) => slots.push({ date: iso(d), time: t, reportTime: r, venue: `ހޯލް ${k + 1}` }));
+  if (!slots.length) slots.push({ date: iso(d0), time: "09:00", reportTime: "08:30", venue: "ހޯލް 1" });
+  const byCat = {}; list.forEach(s => (byCat[s.categoryId] = byCat[s.categoryId] || []).push(s));
+  const usedCats = cats.filter(c => (byCat[c.id] || []).length);
+  const perCat = Math.max(1, Math.floor(slots.length / Math.max(1, usedCats.length)));
+  const sessions = [], sesOfStudent = {};
+  let slotI = 0;
+  usedCats.forEach(c => {
+    const studs = byCat[c.id], parts = Math.min(perCat, studs.length), size = Math.ceil(studs.length / parts);
+    for (let k = 0; k < parts; k++) {
+      const sl = slots[slotI % slots.length]; slotI++;
+      const ses = { id: `${cid}__dummyses_${sessions.length + 1}`, competitionId: cid, name: `${c.name} — ${k + 1}`, date: sl.date, time: sl.time,
+        reportTime: sl.reportTime, reportBefore: 30, venue: sl.venue, capacity: size, categoryIds: [c.id], chiefEmail, chiefName, judges,
+        judgeEmails: judges.map(j => j.email), status: withMarks ? "closed" : "planned", order: [], dummy: true, createdAt: serverTimestamp() };
+      sessions.push(ses);
+      studs.slice(k * size, k * size + size).forEach(st => sesOfStudent[st.nid] = ses);
+    }
   });
-  const sesByCat = Object.fromEntries(sessions.map((s, i) => [cats[i].id, s]));
+  sessions.sort((a, b) => String(a.date + a.time).localeCompare(String(b.date + b.time)));
   const stOps = [], scOps = [], rsOps = [];
   list.forEach((s) => {
     const id = `${cid}__${s.nid}`;
-    const ses = sesByCat[s.categoryId];
+    const ses = sesOfStudent[s.nid];
     ses.order.push(id);
     const { judges: jm, final, stars, rank, questions, ...info } = s;
     stOps.push([doc(db, "students", id), { ...info, competitionId: cid, status: "active", sessionId: ses.id, order: ses.order.length,
