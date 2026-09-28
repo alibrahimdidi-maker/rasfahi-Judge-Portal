@@ -9,7 +9,7 @@ import {
 // apply the last-used colour theme before anything draws (settings load later)
 try { const t = localStorage.getItem("rasfahiTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 
-const V = (file, fn) => async () => (await import(`./views/${file}.js?v=8`))[fn];
+const V = (file, fn) => async () => (await import(`./views/${file}.js?v=9`))[fn];
 
 // Tabs for each role. Only what the super admin gave to the role is available.
 const NAV = {
@@ -26,6 +26,7 @@ const NAV = {
     ["chief", "ޖަޖުންގެ މާކްސް", V("chief", "panel")],
     ["results", "ނަތީޖާ", V("results", "results")],
     ["report", "📊 ރިޕޯޓް", V("report", "report")],
+    ["archive", "🎥 އާކައިވް", V("archive", "archive")],
     ["prints", "ލިސްޓާއި ޕްރިންޓް", V("office", "prints")],
     ["audit", "އޯޑިޓް", V("admin", "auditLog")]
   ],
@@ -39,6 +40,7 @@ const NAV = {
     ["live", "ލައިވް ކޮންޓްރޯލް", V("live", "control")],
     ["results", "ނަތީޖާ", V("results", "results")],
     ["report", "📊 ރިޕޯޓް", V("report", "report")],
+    ["archive", "🎥 އާކައިވް", V("archive", "archive")],
     ["prints", "ލިސްޓާއި ޕްރިންޓް", V("office", "prints")]
   ],
   secretary: [
@@ -46,7 +48,8 @@ const NAV = {
     ["live", "ލައިވް ކޮންޓްރޯލް", V("live", "control")],
     ["students", "ދަރިވަރުން", V("office", "students")],
     ["prints", "ލިސްޓާއި ޕްރިންޓް", V("office", "prints")],
-    ["results", "ނަތީޖާ", V("results", "results")]
+    ["results", "ނަތީޖާ", V("results", "results")],
+    ["archive", "🎥 އާކައިވް", V("archive", "archive")]
   ],
   chief: [
     ["chief", "ޗީފް ޖަޖު ޕެނަލް", V("chief", "panel")],
@@ -103,6 +106,10 @@ function loginView(msg) {
         h("span.login-reg-icon", "📝"),
         h("span", h("b", "ބައިވެރިވުމުގެ ފޯމު"),
           h("span.login-reg-sub", "ޤުރްއާން މުބާރާތަށް ބައިވެރިވުމަށް — ފޯމު ފުރުއްވާ"))),
+      h("a.login-reg-btn.alt", { href: "register.html" },
+        h("span.login-reg-icon", "📅"),
+        h("span", h("b", "ހޮވުނުކަމާއި ކިޔަވަން ހާޟިރުވާ ދުވަސް"),
+          h("span.login-reg-sub", "ފޯމުގައި ލިޔުނު އީމެއިލް، ނަމާއި ފޯނު ނަންބަރު ޖައްސަވާ"))),
       // footer
       h("p.login-note", "Intellectual property of Ali Ibrahim Didi",
         h("br"), "Qur'an: KFGQPC & Tanzil.net")

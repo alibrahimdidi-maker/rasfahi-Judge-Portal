@@ -7,7 +7,7 @@
 // ============================================================
 import {
   S, db, doc, getDocs, collection, query, where, writeBatch, serverTimestamp,
-  loadCategories, loadSessions, cache, starsFor, round
+  loadCategories, loadSessions, cache, starsFor, round, AGE_GROUPS, AGE_LIMITS
 } from "./core.js";
 import { KHAFI_GROUPS, JALI_TYPES } from "./tajweed.js";
 
@@ -82,17 +82,22 @@ export const SAMPLE_RUBRIC = [
   { key: "talaffuz", name: "އައްތަލައްފުޡު",  max: 10 },
   { key: "fasaha",   name: "ފަޞާޙަތް",       max: 10 }
 ];
-const SAMPLE_CATS = [
-  ["ބަލައިގެން — 9 އަހަރުން ދަށް",  "mushaf", "U9",  { type: "juz", from: 30, to: 30 }],
-  ["ނުބަލައި — 9 އަހަރުން ދަށް",    "hifz",   "U9",  { type: "juz", from: 30, to: 30 }],
-  ["ބަލައިގެން — 13 އަހަރުން ދަށް", "mushaf", "U13", { type: "juz", from: 28, to: 30 }],
-  ["ނުބަލައި — 13 އަހަރުން ދަށް",   "hifz",   "U13", { type: "juz", from: 29, to: 30 }],
-  ["ބަލައިގެން — 16 އަހަރުން ދަށް", "mushaf", "U16", { type: "juz", from: 21, to: 30 }],
-  ["ނުބަލައި — 16 އަހަރުން ދަށް",   "hifz",   "U16", { type: "juz", from: 26, to: 30 }],
-  ["ބަލައިގެން — ޢާއްމު",           "mushaf", "GEN", { type: "juz", from: 1,  to: 30 }],
-  ["މުޅި ޤުރްއާން — ނުބަލައި",       "hifz",   "GEN", { type: "juz", from: 1,  to: 30 }]
-];
-const AGE_YEARS = { U6: 5, U9: 8, U11: 10, U13: 12, U16: 15, U19: 18, U21: 20, GEN: 26, SN: 14 };
+// every age group × both branches (and "the whole Quran" for adults), so a test covers the full competition
+function syllabusFor(ag, branch) {
+  const young = ["A5_6", "U7", "U8", "U9", "O50"], mid = ["U10", "U11", "U12", "U13"], teen = ["U14", "U15", "U16", "U17", "U18"];
+  if (young.includes(ag)) return { type: "juz", from: 30, to: 30 };
+  if (mid.includes(ag)) return branch === "hifz" ? { type: "juz", from: 29, to: 30 } : { type: "juz", from: 28, to: 30 };
+  if (teen.includes(ag)) return branch === "hifz" ? { type: "juz", from: 26, to: 30 } : { type: "juz", from: 21, to: 30 };
+  return { type: "juz", from: 1, to: 30 };
+}
+const SAMPLE_CATS = AGE_GROUPS.filter(a => a[0] !== "SN").flatMap(([ag, agDv]) => [
+  [`ބަލައިގެން — ${agDv}`, "mushaf", ag, syllabusFor(ag, "mushaf")],
+  [ag === "O21" ? `މުޅި ޤުރްއާން — ނުބަލައި — ${agDv}` : `ނުބަލައި — ${agDv}`, "hifz", ag, syllabusFor(ag, "hifz")]
+]);
+// a typical age for each group (years)
+const ageFor = (ag, r) => { const [mn, mx] = AGE_LIMITS[ag] || [10, 15];
+  if (ag === "O21") return 22 + Math.floor(r() * 25); if (ag === "O50") return 50 + Math.floor(r() * 20);
+  const lo = Math.max(mn, mx - 3, 5); return lo + Math.floor(r() * Math.max(1, mx - lo)); };
 
 // deterministic pseudo-random, so the same file is produced every time
 function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
@@ -127,7 +132,7 @@ export function buildStudents(count, cats, withMarks, rubOverride) {
     const [fDv, fEn] = pick(female ? F_FIRST : M_FIRST, r), [lDv, lEn] = pick(LAST, r);
     const [isDv, isEn] = pick(ISLANDS, r), [cuDv] = pick(ISLANDS, r);
     const instType = INST_CYCLE[i % INST_CYCLE.length];
-    const age = (AGE_YEARS[cat.ageGroup] || 14) - Math.floor(r() * 3);
+    const age = ageFor(cat.ageGroup, r);
     const dob = `${year - age}-${String(1 + Math.floor(r() * 12)).padStart(2, "0")}-${String(1 + Math.floor(r() * 28)).padStart(2, "0")}`;
     const n = i + 1;
     const s = {
@@ -143,7 +148,7 @@ export function buildStudents(count, cats, withMarks, rubOverride) {
     if (withMarks) {
       const rub = rubOverride || (cat.rubric && cat.rubric.length ? cat.rubric : SAMPLE_RUBRIC);
       // how good this reciter is (small differences by gender / age / branch so the report shows something)
-      const skill = Math.min(0.98, 0.62 + r() * 0.32 + (female ? 0.015 : 0) + (["U16", "U19", "U21", "GEN"].includes(cat.ageGroup) ? 0.02 : 0) - (cat.branch === "hifz" ? 0.02 : 0));
+      const skill = Math.min(0.98, 0.62 + r() * 0.32 + (female ? 0.015 : 0) + (["U14", "U15", "U16", "U17", "U18", "A18_21", "O21"].includes(cat.ageGroup) ? 0.02 : 0) - (cat.branch === "hifz" ? 0.02 : 0));
       s.questions = sampleQuestions(r, cat);
       const base = sampleErrors(r, skill, s.questions.length);
       s.judges = JUDGES.map(([jName], j) => {

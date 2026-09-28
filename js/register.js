@@ -15,7 +15,12 @@ const db = getFirestore(app);
 const root = document.getElementById("reg");
 const params = new URLSearchParams(location.search);
 
-const AGE_GROUPS = { U6: "6 އަހަރުން ދަށް", U9: "9 އަހަރުން ދަށް", U11: "11 އަހަރުން ދަށް", U13: "13 އަހަރުން ދަށް", U16: "16 އަހަރުން ދަށް", U19: "19 އަހަރުން ދަށް", U21: "21 އަހަރުން ދަށް", GEN: "ޢާއްމު ބައި", SN: "ނުކުޅެދުންތެރިކަން ހުންނަ" };
+const AGE_GROUPS = { A5_6: "5 އަހަރާއި 6 އަހަރާ ދެމެދު", U7: "7 އަހަރުން ދަށް", U8: "8 އަހަރުން ދަށް", U9: "9 އަހަރުން ދަށް", U10: "10 އަހަރުން ދަށް",
+  U11: "11 އަހަރުން ދަށް", U12: "12 އަހަރުން ދަށް", U13: "13 އަހަރުން ދަށް", U14: "14 އަހަރުން ދަށް", U15: "15 އަހަރުން ދަށް", U16: "16 އަހަރުން ދަށް",
+  U17: "17 އަހަރުން ދަށް", U18: "18 އަހަރުން ދަށް", A18_21: "18 އަހަރާއި 21 އަހަރާ ދެމެދު", O21: "21 އަހަރުން މަތި", O50: "ދޮށީ ޢުމުރުގެ މީހުން (50 އަހަރުން މަތި)",
+  SN: "ނުކުޅެދުންތެރިކަން ހުންނަ", U6: "6 އަހަރުން ދަށް", U19: "19 އަހަރުން ދަށް", U21: "21 އަހަރުން ދަށް", GEN: "ޢާއްމު ބައި" };
+const AGE_LIMITS = { A5_6: [5, 7], U6: [0, 6], U7: [0, 7], U8: [0, 8], U9: [0, 9], U10: [0, 10], U11: [0, 11], U12: [0, 12], U13: [0, 13], U14: [0, 14],
+  U15: [0, 15], U16: [0, 16], U17: [0, 17], U18: [0, 18], U19: [0, 19], U21: [0, 21], A18_21: [18, 22], O21: [21, 200], O50: [50, 200] };
 const INST = [["School", "ސްކޫލް"], ["University", "ޔުނިވަރސިޓީ / ކޮލެޖް"], ["QuranClass", "ޤުރްއާން ކްލާސް"], ["Club", "ކްލަބް / ޖަމްޢިއްޔާ"], ["Office", "އޮފީސް"], ["Private", "އަމިއްލަ ގޮތުން"]];
 const STATUS = { submitted: "ފޯމު ހުށަހެޅިއްޖެ — ބަލަމުން ދަނީ", resubmitted: "އަލުން ހުށަހެޅިއްޖެ — ބަލަމުން ދަނީ", needs_fix: "ރަނގަޅުކުރަން ޖެހޭ ކަންކަން އެބަހުއްޓެވެ", approved: "ތިޔަ ދަރިވަރު ހޮވިއްޖެ ✔", rejected: "މި ފަހަރު ހޮވިފައެއް ނުވޭ" };
 const DAYS_DV = ["އާދިއްތަ", "ހޯމަ", "އަންގާރަ", "ބުދަ", "ބުރާސްފަތި", "ހުކުރު", "ހޮނިހިރު"];
@@ -151,6 +156,14 @@ function form(a, isFix = false) {
         <div id="ageHint" class="small muted"></div>
       </div>
     </div>
+    <h3>އައިޑީ ކާޑު (ދެފުށް)</h3>
+    <div class="grid2">
+      <div><div class="id-preview" id="idFPrev">${a.idFront ? `<img src="${a.idFront}">` : "އައިޑީ ކާޑުގެ ކުރިމަތި"}</div>
+        <label class="field" style="margin-top:6px"><span class="req">އައިޑީ ކާޑު — ކުރިމަތި</span><input type="file" id="fIdF" accept="image/*" capture="environment"></label></div>
+      <div><div class="id-preview" id="idBPrev">${a.idBack ? `<img src="${a.idBack}">` : "އައިޑީ ކާޑުގެ ފަހަތް"}</div>
+        <label class="field" style="margin-top:6px"><span class="req">އައިޑީ ކާޑު — ފަހަތް</span><input type="file" id="fIdB" accept="image/*" capture="environment"></label></div>
+    </div>
+    <p class="small muted">އުފަން ސެޓްފިކެޓް ނުވަތަ ޕާސްޕޯޓް ބޭނުން ކުރައްވާނަމަ އެ ލިޔުމުގެ ދެފުށް ލައްވާ.</p>
     <h3>އެޑްރެސް</h3>
     <div class="grid3">
       <label class="field"><span class="req">ދާއިމީ އެޑްރެސް (ގޭގެ ނަން)</span><input id="fPerm" value="${v("permAddress")}"></label>
@@ -185,20 +198,35 @@ function form(a, isFix = false) {
     photo = await resize(f, 480, 0.8); thumb = await resize(f, 140, 0.72);
     $("phPrev").innerHTML = `<img src="${photo}">`;
   };
-  const hint = () => { const d = $("fDob").value; $("ageHint").textContent = d ? `ޢުމުރު (${REG.ageOnDate || "މިއަދު"}): ${ageOn(d, REG.ageOnDate)} އަހަރު` : ""; };
+  let idFront = a.idFront || "", idBack = a.idBack || "";
+  const idPic = (inp, prev, set) => { $(inp).onchange = async (e) => { const f = e.target.files[0]; if (!f) return;
+    if (!f.type.startsWith("image/")) return toast("ފޮޓޯއެއް ހޮއްވަވާ", true);
+    const v = await resize(f, 1000, 0.62); set(v); $(prev).innerHTML = `<img src="${v}">`; }; };
+  idPic("fIdF", "idFPrev", v => idFront = v); idPic("fIdB", "idBPrev", v => idBack = v);
+  // age on the competition's age date, and whether it fits the chosen category
+  const hint = () => {
+    const d = $("fDob").value; if (!d) { $("ageHint").textContent = ""; return; }
+    const age = ageOn(d, REG.ageOnDate);
+    const cat = (REG.categories || []).find(c => c.id === $("fCat").value);
+    const lim = cat && AGE_LIMITS[cat.ageGroup];
+    const ok = !lim || (age >= lim[0] && age < lim[1]);
+    $("ageHint").innerHTML = `ޢުމުރު (${esc(REG.ageOnDate || "މިއަދު")}): <b>${age}</b> އަހަރު` +
+      (cat ? (ok ? ` <span class="tag green">✔ ${esc(AGE_GROUPS[cat.ageGroup] || "")}</span>` : ` <span class="tag red">⚠ މި ބައިގެ ޢުމުރުފުރާއާ ދިމާއެއް ނުވޭ (${esc(AGE_GROUPS[cat.ageGroup] || "")})</span>`) : "");
+  };
   $("fDob").oninput = hint; hint();
   const filterCats = () => { const g = $("fGender").value; [...$("fCat").options].forEach(o => { if (o.value) o.hidden = !!(o.dataset.g && g && o.dataset.g !== g); }); };
   $("fGender").onchange = filterCats; filterCats();
+  $("fCat").addEventListener("change", hint);
   $("fSubmit").onclick = async () => {
     const d = {
       name: $("fName").value.trim().replace(/\s+/g, " "), nameEn: $("fNameEn").value.trim(), nid: $("fNid").value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""),
       dob: $("fDob").value, gender: $("fGender").value, permAddress: $("fPerm").value.trim(), island: $("fIsland").value.trim(), currentAddress: $("fCur").value.trim(),
       categoryId: $("fCat").value, categoryName: ($("fCat").selectedOptions[0] || {}).text || "", institution: $("fInst").value.trim(), instType: $("fInstType").value,
       guardianName: $("fGName").value.trim(), guardianPhone: digits($("fGPhone").value), guardianRelation: $("fGRel").value.trim(),
-      phone2: digits($("fPhone2").value), notes: $("fNotes").value.trim(), declaration: $("fDecl").checked, photo, photoThumb: thumb
+      phone2: digits($("fPhone2").value), notes: $("fNotes").value.trim(), declaration: $("fDecl").checked, photo, photoThumb: thumb, idFront, idBack
     };
     const miss = [];
-    if (!photo) miss.push("ފޮޓޯ"); if (d.name.length < 3) miss.push("ނަން"); if (!d.nid) miss.push("އައިޑީ ނަންބަރު"); if (!d.dob) miss.push("އުފަން ތާރީޚް");
+    if (!photo) miss.push("ފޮޓޯ"); if (!idFront) miss.push("އައިޑީ ކާޑުގެ ކުރިމަތި"); if (!idBack) miss.push("އައިޑީ ކާޑުގެ ފަހަތް"); if (d.name.length < 3) miss.push("ނަން"); if (!d.nid) miss.push("އައިޑީ ނަންބަރު"); if (!d.dob) miss.push("އުފަން ތާރީޚް");
     if (!d.gender) miss.push("ޖިންސު"); if (!d.permAddress) miss.push("ދާއިމީ އެޑްރެސް"); if (!d.island) miss.push("ރަށް"); if (!d.categoryId) miss.push("ބައި");
     if (!d.institution) miss.push("މުއައްސަސާ"); if (!d.guardianName) miss.push("ބެލެނިވެރިޔާ"); if (d.guardianPhone.length < 7) miss.push("ބެލެނިވެރިޔާގެ ފޯނު");
     if (!d.declaration) miss.push("އިޤްރާރު");
