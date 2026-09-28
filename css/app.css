@@ -641,3 +641,48 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .rep-student h2 { margin: 0; color: var(--gold2); }
 .rs-score { text-align: center; min-width: 130px; } .rs-score b { display: block; font-size: 36px; color: var(--green2); line-height: 1; }
 .rs-score span { color: var(--muted); } .rs-rank { margin-top: 4px; color: var(--gold2); font-weight: 700; }
+.id-preview { width: 100%; aspect-ratio: 1.58; border: 2px dashed var(--line2); border-radius: 12px; display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 13px; overflow: hidden; background: var(--input); }
+.id-preview img { width: 100%; height: 100%; object-fit: contain; }
+.login-reg-btn.alt { margin-top: 10px; border-color: #c9a443; background: linear-gradient(135deg, #fffaf0, #fbf1d9); }
+.login-reg-btn.alt b { color: #7a5b00; } .login-reg-btn.alt .login-reg-sub { color: #8a6a1c; font-family: var(--ui); }
+.sched-filters select { min-width: 140px; }
+
+/* ============================================================
+   READING ARCHIVE — royal video cards
+   ============================================================ */
+.rec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 18px; }
+@media (max-width: 520px) { .rec-grid { grid-template-columns: 1fr; } }
+.rec-card { position: relative; padding: 16px; border-radius: 18px; background: linear-gradient(180deg, var(--panel), var(--panel2));
+  border: 2px solid var(--gold); box-shadow: 0 0 0 5px var(--bg), 0 0 0 6px rgba(201,164,67,.55), 0 12px 30px rgba(0,0,0,.35); }
+.rec-card .rc-c { position: absolute; width: 26px; height: 26px; border-color: var(--gold2); border-style: solid; pointer-events: none; }
+.rec-card .rc-c.tl { top: 6px; left: 6px; border-width: 3px 0 0 3px; border-radius: 10px 0 0 0; }
+.rec-card .rc-c.tr { top: 6px; right: 6px; border-width: 3px 3px 0 0; border-radius: 0 10px 0 0; }
+.rec-card .rc-c.bl { bottom: 6px; left: 6px; border-width: 0 0 3px 3px; border-radius: 0 0 0 10px; }
+.rec-card .rc-c.br { bottom: 6px; right: 6px; border-width: 0 3px 3px 0; border-radius: 0 0 10px 0; }
+.rec-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid rgba(201,164,67,.45); }
+.rec-name { font-size: 18px; font-weight: 700; color: var(--gold2); }
+.rec-frame { padding: 6px; border-radius: 14px; background: linear-gradient(135deg, #7d5f18, #f7e59a 35%, #c9a443 55%, #f7e59a 75%, #7d5f18);
+  box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+.rec-frame:fullscreen { padding: 0; background: #000; display: flex; align-items: center; justify-content: center; }
+.pl { background: #05070d; border-radius: 10px; overflow: hidden; }
+.pl-screen { position: relative; aspect-ratio: 16 / 9; background: #000; }
+.rec-frame:fullscreen .pl { width: 100%; height: 100%; display: flex; flex-direction: column; } .rec-frame:fullscreen .pl-screen { flex: 1; aspect-ratio: auto; }
+.pl-screen video, .pl-screen iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+.pl-bar { display: flex; align-items: center; gap: 6px; padding: 8px; direction: ltr; background: linear-gradient(180deg, #121826, #0a0e18); border-top: 1px solid rgba(201,164,67,.4); }
+.pl-btn { border: 1px solid rgba(201,164,67,.6); background: rgba(201,164,67,.12); color: var(--gold2); border-radius: 20px; padding: 5px 10px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+.pl-btn.main { width: 42px; height: 42px; border-radius: 50%; padding: 0; font-size: 18px; background: linear-gradient(180deg, #e3c45e, #b38e2c); color: #1a1233; border-color: #fff3c4; }
+.pl-btn:hover { box-shadow: 0 0 10px rgba(236,208,131,.5); }
+.pl-seek { flex: 1; accent-color: var(--gold); min-width: 60px; }
+.pl-time { font-size: 12px; color: #cfd6e6; font-family: monospace; }
+.pl-rate { width: auto; padding: 3px 4px; font-size: 12px; background: #0a0e18; color: var(--gold2); border: 1px solid rgba(201,164,67,.5); }
+.pl-note { font-size: 12px; color: #cfd6e6; padding: 6px 10px; background: #0a0e18; text-align: center; }
+.rec-empty { aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; border: 2px dashed rgba(201,164,67,.5); border-radius: 12px; color: var(--muted); }
+/* report: winners */
+.win-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+.win-card { border: 1px solid rgba(201,164,67,.45); border-radius: 12px; padding: 10px 12px; background: rgba(0,0,0,.12); }
+.win-card h4, .win-sub { margin: 0 0 8px; color: var(--gold2); text-align: center; font-size: 15px; }
+.win-sub { margin-top: 12px; }
+.rep-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 1000px) { .rep-grid3 { grid-template-columns: 1fr; } }
+.win-card .rb-row { grid-template-columns: minmax(150px, 48%) 1fr 58px; }
