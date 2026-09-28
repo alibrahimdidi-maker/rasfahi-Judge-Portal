@@ -686,3 +686,29 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .rep-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 @media (max-width: 1000px) { .rep-grid3 { grid-template-columns: 1fr; } }
 .win-card .rb-row { grid-template-columns: minmax(150px, 48%) 1fr 58px; }
+
+/* ============================================================
+   SESSION ROSTER — the one ordered list (door tablet, judges, chief)
+   ============================================================ */
+.dsp { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; gap: 10px; }
+@media (max-width: 700px) { .dsp { grid-template-columns: 1fr; } }
+.roster-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid rgba(201,164,67,.45); }
+.roster-row { display: grid; grid-template-columns: 46px auto 1fr auto auto; align-items: center; gap: 10px; padding: 8px 10px; margin: 5px 0;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); }
+.roster-row .ph { width: 40px; height: 40px; }
+.roster-row.in { border-color: var(--green); background: var(--okbg); }
+.roster-row.cur { outline: 2px solid var(--gold); box-shadow: 0 0 14px rgba(201,164,67,.35); }
+.roster-row.done { opacity: .72; }
+.rr-no { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 17px;
+  color: var(--gold2); border: 2px solid var(--gold); }
+.rr-name { font-size: 16px; font-weight: 700; }
+.rr-state { display: flex; gap: 6px; align-items: center; }
+.rr-tick { font-size: 22px; color: var(--green2); font-weight: 900; } .rr-tick.off { color: var(--muted); }
+.rr-act { display: flex; gap: 6px; align-items: center; }
+.rr-act .btn.green { padding: 10px 16px; font-size: 15px; }
+.rr-notes { margin-top: 4px; } .rr-note { font-size: 12px; padding: 2px 8px; border-radius: 8px; background: rgba(255,255,255,.05); margin-top: 2px; }
+.rr-note.orange { color: #ffc062; } .rr-note.red { color: var(--red2); } .rr-note.blue { color: #a9c2ff; }
+.judge-roster summary, .chief-roster summary { cursor: pointer; padding: 4px 0; }
+.judge-roster .roster-row { grid-template-columns: 40px 1fr auto auto; padding: 6px 8px; }
+.note-item { border: 1px solid var(--line2); border-radius: 10px; padding: 8px 10px; margin: 6px 0; background: var(--panel2); }
+.note-item.orange { border-color: #ff9f1c; } .note-item.red { border-color: var(--red); } .note-item.blue { border-color: var(--blue); }
