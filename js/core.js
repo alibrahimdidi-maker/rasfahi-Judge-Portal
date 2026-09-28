@@ -1,7 +1,14 @@
+/*!
+ * RASFAHI — Qur'an Competition Judging System
+ * Copyright (c) 2026 Ali Ibrahim Didi (AIDD) / Zaadh Holding. All rights reserved. Reg No: MED.03.IP.CR.26.EW5889
+ * Unauthorised copying, hosting, modification or redistribution is prohibited.
+ */
 // ============================================================
 //  RASFAHI — core: Firebase, auth, roles, helpers, UI primitives
 // ============================================================
-import { initializeApp } from "./firebase.bundle.js";
+import { initializeApp, initializeAppCheck, ReCaptchaV3Provider } from "./firebase.bundle.js";
+import { LICENSE, checkLicense } from "./license.js";
+checkLicense();                                     // runs only on the licensed web addresses
 import {
   getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, reauthenticateWithPopup
 } from "./firebase.bundle.js";
@@ -14,6 +21,8 @@ import { firebaseConfig, BOOTSTRAP_SUPERADMIN, PUBLIC_BASE_URL } from "./firebas
 import { applyTheme, DEFAULT_THEME } from "./frames.js";
 
 export const app = initializeApp(firebaseConfig);
+// App Check: when a reCAPTCHA v3 key is set in license.js, the database answers only this website
+if (LICENSE.appCheckSiteKey) { try { initializeAppCheck(app, { provider: new ReCaptchaV3Provider(LICENSE.appCheckSiteKey), isTokenAutoRefreshEnabled: true }); } catch (e) { console.warn("appcheck", e); } }
 export const auth = getAuth(app);
 let _db;
 try {
@@ -338,7 +347,9 @@ export async function loadCategories(force = false) {
   return cache.categories;
 }
 export async function loadSessions(force = false) {
-  if (cache.sessions && !force) return cache.sessions;
+  // "force" still re-uses a list fetched in the last 20 seconds (moving between tabs stays fast)
+  if (cache.sessions && (!force || Date.now() - (cache.sessionsAt || 0) < 20000)) return cache.sessions;
+  cache.sessionsAt = Date.now();
   const cid = S.settings.activeCompetitionId;
   const snap = await getDocs(cid ? query(collection(db, "sessions"), where("competitionId", "==", cid)) : collection(db, "sessions"));
   cache.sessions = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -357,4 +368,69 @@ export function publicStudent(st, cat) {
     institution: st.institution || "", island: st.island || "", permAddress: st.permAddress || "",
     age: st.dob ? ageOn(st.dob) : "", gender: st.gender || ""
   };
+}
+
+
+// ---------------- OFFLINE SAFETY ----------------
+// A judge's work is written to the cloud; if the internet is gone (or slow), a copy stays in this
+// browser (outbox) and is sent as soon as the connection comes back. Firestore also queues the write.
+const OUTBOX = "rasfahi_outbox";
+const TS = "__serverTimestamp__";
+const obRead = () => { try { return JSON.parse(localStorage.getItem(OUTBOX) || "[]"); } catch (e) { return []; } };
+const obWrite = (a) => { try { localStorage.setItem(OUTBOX, JSON.stringify(a)); } catch (e) {} window.dispatchEvent(new Event("rasfahi-outbox")); };
+export const outboxCount = () => obRead().length;
+const pack = (data) => JSON.parse(JSON.stringify(data, (k, v) => (v && typeof v === "object" && v._methodName === "serverTimestamp" ? TS : v)));
+const unpack = (o) => { if (o === TS) return serverTimestamp(); if (Array.isArray(o)) return o.map(unpack);
+  if (o && typeof o === "object") { const r = {}; for (const k in o) r[k] = unpack(o[k]); return r; } return o; };
+const refOf = (path) => doc(db, ...path.split("/"));
+export async function safeSet(path, data, opts = {}) {
+  const ref = refOf(path);
+  const write = opts.update ? updateDoc(ref, data) : setDoc(ref, data, opts.merge ? { merge: true } : {});
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  const r = await Promise.race([write.then(() => "ok"), new Promise(res => setTimeout(() => res("wait"), offline ? 60 : 7000))]);
+  if (r === "ok") return { ok: true };
+  const entry = { id: Date.now() + "_" + Math.random().toString(36).slice(2, 7), path, data: pack(data), update: !!opts.update, merge: !!opts.merge, at: new Date().toISOString() };
+  obWrite([...obRead().filter(e => e.path !== path), entry]);
+  write.then(() => obWrite(obRead().filter(e => e.id !== entry.id))).catch(() => {});
+  return { ok: true, queued: true };
+}
+let flushing = false;
+export async function flushOutbox() {
+  if (flushing || !obRead().length || (typeof navigator !== "undefined" && navigator.onLine === false)) return 0;
+  flushing = true; let sent = 0;
+  for (const e of obRead()) {
+    try {
+      const ref = refOf(e.path), data = unpack(e.data);
+      const w = e.update ? updateDoc(ref, data) : setDoc(ref, data, e.merge ? { merge: true } : {});
+      const r = await Promise.race([w.then(() => "ok"), new Promise(res => setTimeout(() => res("wait"), 10000))]);
+      if (r === "ok") { obWrite(obRead().filter(x => x.id !== e.id)); sent++; }
+    } catch (err) {
+      // already saved (e.g. the sheet is locked now) → the copy is not needed any more
+      try { const d = await getDoc(refOf(e.path)); if (d.exists()) { obWrite(obRead().filter(x => x.id !== e.id)); continue; } } catch (x) {}
+    }
+  }
+  flushing = false;
+  if (sent) toast(`📤 ނެޓް ލިބުނީ — ${sent} ސޭވް ކްލައުޑަށް ފޮނުވިއްޖެ ✔`);
+  return sent;
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => setTimeout(flushOutbox, 1500));
+  setInterval(() => { if (obRead().length) flushOutbox(); }, 30000);
+}
+
+
+// ---------------- SMOOTH LIVE SCREENS ----------------
+// keep the TV / tablet from sleeping while a live screen is open
+let _wake = null;
+export async function keepAwake() {
+  try {
+    if (!("wakeLock" in navigator)) return;
+    if (!_wake || _wake.released) _wake = await navigator.wakeLock.request("screen");
+    if (!keepAwake._hooked) { keepAwake._hooked = true; document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); }); }
+  } catch (e) {}
+}
+// warm the browser cache with images that will be needed in a moment (e.g. mushaf pages of the grid)
+const _pre = new Set();
+export function prefetchImages(urls) {
+  (urls || []).forEach(u => { if (!u || _pre.has(u) || _pre.size > 400) return; _pre.add(u); const i = new Image(); i.decoding = "async"; i.src = u; });
 }

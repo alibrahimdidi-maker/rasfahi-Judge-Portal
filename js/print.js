@@ -1,3 +1,8 @@
+/*!
+ * RASFAHI — Qur'an Competition Judging System
+ * Copyright (c) 2026 Ali Ibrahim Didi (AIDD) / Zaadh Holding. All rights reserved. Reg No: MED.03.IP.CR.26.EW5889
+ * Unauthorised copying, hosting, modification or redistribution is prohibited.
+ */
 // ============================================================
 //  Print templates (A4). Every list can be filtered before printing.
 // ============================================================

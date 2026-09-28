@@ -1,3 +1,8 @@
+/*!
+ * RASFAHI — Qur'an Competition Judging System
+ * Copyright (c) 2026 Ali Ibrahim Didi (AIDD) / Zaadh Holding. All rights reserved. Reg No: MED.03.IP.CR.26.EW5889
+ * Unauthorised copying, hosting, modification or redistribution is prohibited.
+ */
 // ============================================================
 //  RASFAHI — sample (dummy) data for testing the whole system
 //  • download: 2000 students with full details, with or without 5 judges' marks (CSV, opens in Excel)
@@ -21,7 +26,7 @@ function pickWeighted(r) {
   for (const g of groups) { x -= KHAFI_WEIGHT[g.key]; if (x <= 0) return g; }
   return groups[0];
 }
-function sampleErrors(r, skill, qn) {
+export function sampleErrors(r, skill, qn) {
   const n = Math.max(0, Math.round((1 - skill) * 22 * (0.6 + r() * 0.8)));
   const out = [];
   for (let i = 0; i < n; i++) {
@@ -100,7 +105,7 @@ const ageFor = (ag, r) => { const [mn, mx] = AGE_LIMITS[ag] || [10, 15];
   const lo = Math.max(mn, mx - 3, 5); return lo + Math.floor(r() * Math.max(1, mx - lo)); };
 
 // deterministic pseudo-random, so the same file is produced every time
-function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+export function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 const pick = (arr, r) => arr[Math.floor(r() * arr.length)];
 
 function sampleCategories() {

@@ -1,15 +1,40 @@
+/*!
+ * RASFAHI — Qur'an Competition Judging System
+ * Copyright (c) 2026 Ali Ibrahim Didi (AIDD) / Zaadh Holding. All rights reserved. Reg No: MED.03.IP.CR.26.EW5889
+ * Unauthorised copying, hosting, modification or redistribution is prohibited.
+ */
 // ============================================================
 //  RASFAHI — app shell: login, role check, role-based navigation
 // ============================================================
 import {
   S, auth, db, doc, getDoc, setDoc, updateDoc, serverTimestamp, onAuthStateChanged, loginGoogle, logout, loadSettings,
-  h, $, esc, roleName, clearSubs, toast, modal, select, BOOTSTRAP_SUPERADMIN, emailOf, audit, loadGrant, reauthGoogle, ROLES, fmtDateTime
+  h, $, esc, roleName, clearSubs, toast, modal, select, BOOTSTRAP_SUPERADMIN, emailOf, audit, loadGrant, reauthGoogle, ROLES, fmtDateTime,
+  outboxCount, flushOutbox
 } from "./core.js";
+
+// 🟢 / 🔴 internet, and how many saves are waiting in this browser
+function netPill() {
+  const el = h("span.net-pill");
+  const paint = () => { const n = outboxCount(), on = navigator.onLine !== false;
+    el.className = "net-pill " + (on ? (n ? "wait" : "on") : "off");
+    el.textContent = (on ? "🟢" : "🔴 ނެޓް ނެތް") + (n ? ` • 📤 ${n}` : "");
+    el.title = n ? `${n} ސޭވް މި ބްރައުޒަރުގައި — ނެޓް ލިބުމުން ފޮނުވޭނެ` : on ? "ނެޓް ލިބޭ" : "ނެޓް ނެތް — ސޭވްތައް ބްރައުޒަރުގައި ރައްކާވާނެ"; };
+  ["online", "offline", "rasfahi-outbox"].forEach(ev => window.addEventListener(ev, paint));
+  el.onclick = () => flushOutbox();
+  paint(); return el;
+}
 
 // apply the last-used colour theme before anything draws (settings load later)
 try { const t = localStorage.getItem("rasfahiTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 
-const V = (file, fn) => async () => (await import(`./views/${file}.js?v=12`))[fn];
+// each screen is loaded only when opened (fixed paths, so the protected build can bundle them)
+const VIEWS = {
+  admin: () => import("./views/admin.js"), archive: () => import("./views/archive.js"), checkin: () => import("./views/checkin.js"),
+  chief: () => import("./views/chief.js"), judge: () => import("./views/judge.js"), live: () => import("./views/live.js"),
+  manual: () => import("./views/manual.js"), office: () => import("./views/office.js"), report: () => import("./views/report.js"),
+  results: () => import("./views/results.js"), screens: () => import("./views/screens.js")
+};
+const V = (file, fn) => async () => (await VIEWS[file]())[fn];
 
 // Tabs for each role. Only what the super admin gave to the role is available.
 const NAV = {
@@ -174,12 +199,37 @@ async function boot(user) {
   }
   await loadSettings();
   await loadGrant();
+  flushOutbox();                                            // anything saved while offline last time
+  watchForUpdate();
+  // load the Qur'an text in the background so the judges' / live screens open quickly
+  const idle = window.requestIdleCallback || ((f) => setTimeout(f, 1500));
+  idle(() => import("./quran.js").then(m => m.loadQuran({ tanzil: S.settings.textSource === "tanzil" })).catch(() => {}));
   audit("login", { role: S.me.role });
   try {
     const cid = S.settings.activeCompetitionId;
     if (cid) { const c = await getDoc(doc(db, "competitions", cid)); if (c.exists()) localStorage.setItem("rasfahiOrg", c.data().organizer || c.data().name || ""); }
   } catch (e) {}
   shell();
+}
+
+// a new version was uploaded: screens reload themselves when nobody is reading; others get a button
+function watchForUpdate() {
+  if (watchForUpdate.on) return; watchForUpdate.on = true;
+  const mine = (document.querySelector('script[type="module"]') || {}).src || "";
+  const tag = (t) => (t.match(/js\/app[^"'\s]*\.js(\?v=[\w]+)?/) || [""])[0];
+  const current = tag(mine);
+  setInterval(async () => {
+    try {
+      const html = await (await fetch(location.pathname + "?_=" + Date.now(), { cache: "no-store" })).text();
+      const now = tag(html);
+      if (!now || !current || now === current || document.getElementById("upd-banner")) return;
+      const isScreen = String(S.me && S.me.role).startsWith("screen_");
+      const busy = !!document.querySelector(".screen.student:not(.off)");
+      if (isScreen && !busy) return location.reload();
+      document.body.appendChild(h("div#upd-banner.upd-banner", "🔄 ސޮފްޓްވެއަރގެ އާ ވަރޝަނެއް ލިބިއްޖެ",
+        h("button.btn.sm.primary", { onclick: () => location.reload() }, "އަޕްޑޭޓް ކުރޭ")));
+    } catch (e) {}
+  }, 90000);
 }
 
 // switch role and restart (super admin only)
@@ -220,6 +270,7 @@ function shell() {
       h("div.logo", "RASFAHI"),
       nav,
       h("div.who",
+        netPill(),
         S.me.realRole === "superadmin" ? roleSwitch() : null,
         h("span.rolebadge", roleName(S.me.role)),
         h("span", S.me.name || S.user.displayName || ""),

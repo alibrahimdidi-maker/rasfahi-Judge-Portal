@@ -1,16 +1,24 @@
+/*!
+ * RASFAHI — Qur'an Competition Judging System
+ * Copyright (c) 2026 Ali Ibrahim Didi (AIDD) / Zaadh Holding. All rights reserved. Reg No: MED.03.IP.CR.26.EW5889
+ * Unauthorised copying, hosting, modification or redistribution is prohibited.
+ */
 // ============================================================
 //  PUBLIC REGISTRATION FORM
 //  Step 1: email + full name + mobile  →  Step 2: the rest of the form opens.
 //  The same three details re-open the same application (to fix and resubmit).
 // ============================================================
-import { initializeApp } from "./firebase.bundle.js";
+import { initializeApp, initializeAppCheck, ReCaptchaV3Provider } from "./firebase.bundle.js";
+import { LICENSE, checkLicense } from "./license.js";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp } from "./firebase.bundle.js";
 import { firebaseConfig } from "./firebase-config.js";
 
 try { const t = localStorage.getItem("rasfahiTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 
+checkLicense();
 window.__rasfahiBoot = true;
 const app = initializeApp(firebaseConfig);
+if (LICENSE.appCheckSiteKey) { try { initializeAppCheck(app, { provider: new ReCaptchaV3Provider(LICENSE.appCheckSiteKey), isTokenAutoRefreshEnabled: true }); } catch (e) {} }
 const db = getFirestore(app);
 const root = document.getElementById("reg");
 const params = new URLSearchParams(location.search);

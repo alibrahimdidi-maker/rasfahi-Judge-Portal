@@ -1,3 +1,8 @@
+/*!
+ * RASFAHI — Qur'an Competition Judging System
+ * Copyright (c) 2026 Ali Ibrahim Didi (AIDD) / Zaadh Holding. All rights reserved. Reg No: MED.03.IP.CR.26.EW5889
+ * Unauthorised copying, hosting, modification or redistribution is prohibited.
+ */
 // ============================================================
 //  RASFAHI — Royal Quran frames (50 styles) & app colour themes
 //  A frame = one of 10 designs × one of 5 palettes. The shapes live in css/app.css

@@ -1,3 +1,8 @@
+/*!
+ * RASFAHI — Qur'an Competition Judging System
+ * Copyright (c) 2026 Ali Ibrahim Didi (AIDD) / Zaadh Holding. All rights reserved. Reg No: MED.03.IP.CR.26.EW5889
+ * Unauthorised copying, hosting, modification or redistribution is prohibited.
+ */
 // ============================================================
 //  SESSION ROSTER — the ONE ordered list of a session
 //  • the same order numbers as every printed sheet (notice board, attendance, judges' sheets)
