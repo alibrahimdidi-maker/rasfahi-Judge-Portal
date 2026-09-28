@@ -1,0 +1,8 @@
+RASFAHI — Qur'an Competition Judging System
+Copyright (c) 2026 Ali Ibrahim Didi (AIDD) / Zaadh Holding. All rights reserved.
+Registration No: MED.03.IP.CR.26.EW5889 • +960 7791550
+
+This software and its source code are the intellectual property of the copyright holder.
+No licence is granted to copy, host, modify, sell, sublicense or redistribute this software,
+in whole or in part, without the written permission of the copyright holder.
+Use is permitted only on the web addresses licensed by the copyright holder.
