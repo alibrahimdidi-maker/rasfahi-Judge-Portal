@@ -23,6 +23,7 @@ const NAV = {
     ["students", "ދަރިވަރުން", V("office", "students")],
     ["sessions", "ސެޝަނާއި ޝެޑިއުލް", V("office", "sessions")],
     ["live", "ލައިވް ކޮންޓްރޯލް", V("live", "control")],
+    ["manual", "✍ މާކްސް ވެއްދުން", V("manual", "manual")],
     ["chief", "ޖަޖުންގެ މާކްސް", V("chief", "panel")],
     ["results", "ނަތީޖާ", V("results", "results")],
     ["report", "📊 ރިޕޯޓް", V("report", "report")],
@@ -39,6 +40,7 @@ const NAV = {
     ["students", "ދަރިވަރުން", V("office", "students")],
     ["sessions", "ސެޝަނާއި ޝެޑިއުލް", V("office", "sessions")],
     ["live", "ލައިވް ކޮންޓްރޯލް", V("live", "control")],
+    ["manual", "✍ މާކްސް ވެއްދުން", V("manual", "manual")],
     ["results", "ނަތީޖާ", V("results", "results")],
     ["report", "📊 ރިޕޯޓް", V("report", "report")],
     ["archive", "🎥 އާކައިވް", V("archive", "archive")],
@@ -49,6 +51,7 @@ const NAV = {
   secretary: [
     ["sessions", "ސެޝަނާއި ޝެޑިއުލް", V("office", "sessions")],
     ["live", "ލައިވް ކޮންޓްރޯލް", V("live", "control")],
+    ["manual", "✍ މާކްސް ވެއްދުން", V("manual", "manual")],
     ["students", "ދަރިވަރުން", V("office", "students")],
     ["prints", "ލިސްޓާއި ޕްރިންޓް", V("office", "prints")],
     ["results", "ނަތީޖާ", V("results", "results")],
@@ -57,6 +60,7 @@ const NAV = {
   chief: [
     ["chief", "ޗީފް ޖަޖު ޕެނަލް", V("chief", "panel")],
     ["live", "ލައިވް ކޮންޓްރޯލް", V("live", "control")],
+    ["manual", "✍ މާކްސް ވެއްދުން", V("manual", "manual")],
     ["amend", "އެމެންޑް ރިކުއެސްޓް", V("chief", "amendments")],
     ["results", "ސެޝަން ނަތީޖާ", V("chief", "sessionResults")]
   ],
@@ -188,7 +192,7 @@ async function activateGrant() {
   const g = S.grant;
   const code = h("input.ltr", { inputmode: "numeric", maxlength: 6, placeholder: "000000", style: { fontSize: "26px", letterSpacing: "8px", textAlign: "center" } });
   const ok = await modal("🔐 ބަދަލުކުރުމުގެ ހުއްދަ ހުޅުވުން", h("div",
-    h("p", `ހުއްދަ: ${(g.scopes || []).map(x => ({ students: "ދަރިވަރުންގެ މަޢުލޫމާތު", schedule: "ޝެޑިއުލް", results: "ނަތީޖާ" }[x] || x)).join("، ")}${g.role === "secretary" && S.me.role !== "secretary" ? " • ސެކްރެޓަރީގެ ރޯލް" : ""}`),
+    h("p", `ހުއްދަ: ${(g.scopes || []).map(x => ({ students: "ދަރިވަރުންގެ މަޢުލޫމާތު", schedule: "ޝެޑިއުލް", marks: "ޖަޖުންގެ މާކްސް ވެއްދުން", results: "ނަތީޖާ" }[x] || x)).join("، ")}${g.role === "secretary" && S.me.role !== "secretary" ? " • ސެކްރެޓަރީގެ ރޯލް" : ""}`),
     h("p.small.muted", `${fmtDateTime(g.until)} އާ ހަމައަށް • ދިނީ: ${g.byName || g.by || ""}`),
     h("label.field", h("span", "1) އެޑްމިން / ހެޑް ސުޕަވައިޒަރ ދިން 6 ނަންބަރުގެ ކޯޑު"), code),
     h("p.small.muted", "2) ދެން ގޫގުލް އިން އަލުން ލޮގިން ވުމަށް ވިންޑޯއެއް ހުޅުވޭނެ (ދެވަނަ ވެރިފިކޭޝަން).")),

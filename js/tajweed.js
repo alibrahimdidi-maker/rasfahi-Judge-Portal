@@ -106,6 +106,7 @@ export function khafiInfo(groupKey, itemKey) {
   return { group: g.key, groupDv: g.dv, groupAr: g.ar, key: it[0], ar: it[1], dv: it[2], crit: g.crit, ded: g.ded };
 }
 export function errLabel(e) {
-  if (e.type === "jali") return `ލަޙްނު ޖަލީ${e.subDv ? " — " + e.subDv : ""}`;
-  return `ލަޙްނު ޚަފީ — ${e.groupDv || ""}${e.subDv ? ": " + e.subDv : ""}`;
+  const L = e.letter ? ` [${e.letter}]` : "";
+  if (e.type === "jali") return `ލަޙްނު ޖަލީ${e.subDv ? " — " + e.subDv : ""}${L}`;
+  return `ލަޙްނު ޚަފީ — ${e.groupDv || ""}${e.subDv ? ": " + e.subDv : ""}${L}`;
 }
