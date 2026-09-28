@@ -2,7 +2,7 @@
 //  TV SCREENS: student reading screen & waiting-room screen
 // ============================================================
 import { S, db, doc, getDoc, getDocs, collection, query, where, onSnapshot, h, esc, select, empty, sub, logout, starsHtml, beep, loadSessions, sessionLabel } from "../core.js";
-import { loadQuran, renderPage, openingWords, pageImageURL, slotBand, arNum, qLabel } from "../quran.js";
+import { loadQuran, renderPage, renderQuestion, questionPages, openingWords, pageImageURL, slotBand, pageSlotCount, arNum, qLabel } from "../quran.js";
 import { frameEl } from "../frames.js";
 
 // royal frame around the Quran (Settings → frames). 0 = no frame.
@@ -105,7 +105,7 @@ export async function studentScreen(view) {
             flashing ? `ނަންބަރު ${flashN} ހޮވިއްޖެ — ސުވާލު ${picks.length + 1} ހުޅުވެނީ` :
             picks.length ? `ސުވާލު ${picks.length + 1} — ނަންބަރެއް ހޮއްވަވާ` : "ނަންބަރެއް ހޮއްވަވާ",
             h("span", { style: { color: "var(--muted)", fontSize: "1.6vw" } }, `   (${picks.length} / ${qn})`)),
-          h("div.scr-grid.pickable", (L.grid || []).map(g => {
+          h("div.scr-grid.pickable", { style: gridStyle((L.grid || []).length) }, (L.grid || []).map(g => {
             const i = picks.indexOf(g.n);
             const now = flashing && g.n === flashN;
             const b = h("button" + (i >= 0 ? ".taken" : now ? ".picking" : flashing ? ".dim" : ""), { disabled: i >= 0 || flashing }, g.n,
@@ -138,32 +138,62 @@ export async function studentScreen(view) {
       bodyEl.appendChild(h("div.scr-read.single", mainEl));
       if ((L.display || S.settings.studentDisplay) === "image") {
         const m = S.settings.mushaf;
-        const [tp, hgt] = slotBand(q.page, q.lineFrom, q.lineTo, m);
-        const wrap = h("div.scr-img", h("img", { src: pageImageURL(q.page, m), onerror: () => { wrap.innerHTML = ""; wrap.appendChild(textPage(q)); } }));
-        wrap.appendChild(h("div.band", { style: { top: tp + "%", height: hgt + "%", left: m.left + "%", right: m.right + "%" } }));
-        wrap.appendChild(h("div.rog", { style: { top: tp + "%", height: hgt + "%", right: `calc(${m.right}% - 1.4vw)` } }));
-        wrap.appendChild(h("div.arrow", { style: { top: `calc(${tp}% - 1.3vw)`, right: `calc(${m.right}% - 3.2vw)` } }, "◀"));
-        txt.appendChild(framed(wrap, true));
+        const pgs = questionPages(q);
+        if (pgs.length === 1) {
+          const [tp, hgt] = slotBand(q.page, q.lineFrom, q.lineTo, m);
+          const wrap = h("div.scr-img", h("img", { src: pageImageURL(q.page, m), onerror: () => { wrap.innerHTML = ""; wrap.appendChild(textPage(q)); } }));
+          wrap.appendChild(h("div.band", { style: { top: tp + "%", height: hgt + "%", left: m.left + "%", right: m.right + "%" } }));
+          wrap.appendChild(h("div.rog", { style: { top: tp + "%", height: hgt + "%", right: `calc(${m.right}% - 1.4vw)` } }));
+          wrap.appendChild(h("div.arrow", { style: { top: `calc(${tp}% - 1.3vw)`, right: `calc(${m.right}% - 3.2vw)` } }, "◀"));
+          txt.appendChild(framed(wrap, true));
+          return;
+        }
+        // long passage: the pages one under the other, each with its part marked; the student scrolls
+        const stack = h("div.scr-img-stack");
+        pgs.forEach((p, i) => {
+          const from = i === 0 ? q.lineFrom : 1, to = i === pgs.length - 1 ? q.lineTo : pageSlotCount(p);
+          const [tp, hgt] = slotBand(p, from, to, m);
+          const w = h("div.scr-img.multi", h("img", { src: pageImageURL(p, m) }));
+          w.appendChild(h("div.band", { style: { top: tp + "%", height: hgt + "%", left: m.left + "%", right: m.right + "%" } }));
+          w.appendChild(h("div.rog", { style: { top: tp + "%", height: hgt + "%", right: `calc(${m.right}% - 1.4vw)` } }));
+          if (i === 0) w.appendChild(h("div.arrow", { style: { top: `calc(${tp}% - 1.3vw)`, right: `calc(${m.right}% - 3.2vw)` } }, "◀"));
+          stack.appendChild(w);
+        });
+        txt.classList.add("scroll");
+        txt.appendChild(framed(stack, false));
         return;
       }
-      txt.appendChild(framed(textPage(q), false));
+      const tp = textPage(q);
+      if (tp.classList.contains("long")) txt.classList.add("scroll");
+      txt.appendChild(framed(tp, false));
     }
   });
 }
-// only the lines of the question, laid out exactly as on the Madinah page, auto-sized
+// more numbers → more columns and smaller boxes, so the whole grid fits on the screen
+function gridStyle(n) {
+  const cols = n <= 20 ? 5 : n <= 30 ? 6 : n <= 40 ? 8 : 10;
+  const rows = Math.ceil(n / cols);
+  return { "--cols": cols, "--gfs": `min(${(5 * 5 / cols).toFixed(2)}vw, ${(46 / rows).toFixed(1)}vh)`, "--gar": rows > 4 ? 2.2 : 1.7 };
+}
+
+// only the lines of the question, laid out as on the Madinah page(s), sized to fill the screen.
+// Long passages (more lines than fit) keep a readable size and scroll — the student can swipe.
 function textPage(q) {
-  const box = h("div", { html: renderPage(q.page, { range: [q.wStart, q.wEnd], source: S.settings.textSource }) });
-  const pg = box.firstChild;
+  const box = h("div", { html: renderQuestion(q, { source: S.settings.textSource }) });
+  const pages = [...box.querySelectorAll(".mushaf-page")];
+  const pg = pages[0];
+  pages.slice(1).forEach(p2 => { [...p2.children].forEach(ch => pg.appendChild(ch)); p2.remove(); });   // one continuous block
   pg.querySelectorAll(".qline.dim, .sura-head, .qline.basmala").forEach(e => {
-    // keep sura headers/basmala only if they sit inside the question block
     const slot = +(e.dataset.slot || 0);
     if (e.classList.contains("dim") || !slot) e.remove();
   });
   const n = pg.querySelectorAll(".qline").length || 1;
-  const size = Math.min((+S.settings.qframe ? 58 : 80) / (n * 2.15), 7);
-  pg.style.setProperty("--qsize", `min(${size}vh, ${94 / 26}vw)`);
-  pg.style.fontSize = `min(${size}vh, 3.7vw)`;
+  const budget = +S.settings.qframe ? 64 : 76;               // % of screen height for the text
+  const size = Math.max(Math.min(budget / (n * 2.1), 7.4), 4.2);   // never smaller than 4.2vh — scroll instead
+  pg.style.setProperty("--qsize", `min(${size}vh, 4.3vw)`);
+  pg.style.fontSize = `min(${size}vh, 4.3vw)`;
   pg.style.width = "fit-content"; pg.style.margin = "0 auto";
+  if (n * 2.1 * size > budget + 1) box.classList.add("long");
   return box;
 }
 

@@ -9,7 +9,7 @@ import {
   h, esc, toast, modal, confirmBox, promptBox, select, spinner, empty, audit, sub, idCard, fmt2, round, fmtDateTime,
   loadCategories, catById, sessionLabel, scoreId, uid, beep, DEFAULT_RUBRIC
 } from "../core.js";
-import { loadQuran, renderPage, wordInfo, qLabelDv, qLabel, portion } from "../quran.js";
+import { loadQuran, renderPage, renderQuestion, wordInfo, qLabelDv, qLabel, portion } from "../quran.js";
 import { JALI, JALI_TYPES, KHAFI_GROUPS, khafiInfo, errLabel } from "../tajweed.js";
 import { printDoc, scoreSheetHTML } from "../print.js";
 import { pickQuestion } from "../liveops.js";
@@ -188,7 +188,7 @@ export async function live(view) {
       if (L.phase === "grid") {
         // same grid as the student screen — a judge may open the number the student says
         const picks = L.picks || [];
-        const gb = h("div.gridbox.judge-grid", (L.grid || []).map(g => {
+        const gb = h("div.gridbox.judge-grid", { style: { gridTemplateColumns: `repeat(${(L.grid || []).length > 30 ? 8 : (L.grid || []).length > 20 ? 6 : 5}, 1fr)` } }, (L.grid || []).map(g => {
           const i = picks.indexOf(g.n);
           const b = h("button" + (i >= 0 ? ".taken" : ""), { disabled: i >= 0 }, g.n, i >= 0 ? h("span.sub", "ސުވާލު " + (i + 1)) : null);
           if (i < 0) b.onclick = async () => {
@@ -219,7 +219,7 @@ export async function live(view) {
           viewQ !== L.qIndex && L.phase === "reading" ? h("button.btn.sm.orange", { onclick: () => { viewQ = L.qIndex; draw(); } }, "ހިނގަމުންދާ ސުވާލަށް ↩") : null));
         const marks = {};
         D.errors.filter(e => e.qIndex === viewQ).forEach(e => { marks[e.w] = marks[e.w] && marks[e.w] !== e.type ? "both" : e.type; });
-        const pg = h("div.clickable" + (L.branch === "hifz" ? ".hifz-dim" : ""), { html: renderPage(q.page, { range: [q.wStart, q.wEnd], marks, source: S.settings.textSource }) });
+        const pg = h("div.clickable" + (L.branch === "hifz" ? ".hifz-dim" : ""), { html: renderQuestion(q, { marks, source: S.settings.textSource }) });
         pg.addEventListener("click", onWordTap);
         pg.addEventListener("dblclick", e => e.preventDefault());
         main.appendChild(pg);

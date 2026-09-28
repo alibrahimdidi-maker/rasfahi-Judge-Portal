@@ -6,7 +6,7 @@ import {
   S, db, doc, collection, query, where, onSnapshot, h, toast, confirmBox, select, spinner, empty, sub,
   loadCategories, loadSessions, catById, sessionLabel, photoTag, idCard, beep, starsEl, BRANCHES
 } from "../core.js";
-import { loadQuran, qLabelDv, renderPage, describeSyllabus, portion } from "../quran.js";
+import { loadQuran, qLabelDv, renderPage, renderQuestion, describeSyllabus, portion } from "../quran.js";
 import { PHASE_DV, writeLive, admitStudent, pickQuestion, backToGrid, undoLastPick, finishReading, clearStage } from "../liveops.js";
 
 export function portionBar(q, opts = {}) {
@@ -154,8 +154,8 @@ export async function control(view) {
             h("button.btn.ghost", { onclick: () => writeLive(ses, { phase: "reading" }) }, "↩ ކިޔެވުމަށް"),
             h("button.btn.primary.lg", { onclick: nextStudent }, "⏭ ދެން ދަރިވަރު")));
         }
-        const pv = h("div", { html: renderPage(q.page, { range: [q.wStart, q.wEnd], source: S.settings.textSource }) });
-        pv.firstChild.style.setProperty("--qsize", "22px");
+        const pv = h("div", { html: renderQuestion(q, { source: S.settings.textSource }) });
+        pv.querySelectorAll(".mushaf-page").forEach(x => x.style.setProperty("--qsize", "22px"));
         card.appendChild(pv);
         right.appendChild(card);
       }

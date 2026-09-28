@@ -9,6 +9,11 @@ import {
 import { loadQuran, surahOptions, describeSyllabus, buildCandidates, pageImageURL, pageSlotCount, slotBand } from "../quran.js";
 import { THEMES, FRAMES, frameEl } from "../frames.js";
 
+// dropdown choices for questions / lines / grid
+const QCOUNT_OPTS = Array.from({ length: 30 }, (_, i) => [String(i + 1), `${i + 1} ސުވާލު`]);
+const LINE_OPTS = Array.from({ length: 45 }, (_, i) => [String(i + 1), `${i + 1} ފޮޅުވަތް` + (i + 1 === 15 ? " (1 ޞަފުޙާ)" : i + 1 === 30 ? " (2 ޞަފުޙާ)" : i + 1 === 45 ? " (3 ޞަފުޙާ)" : "")]);
+const GRID_OPTS = [5, 6, 8, 9, 10, 12, 15, 16, 18, 20, 24, 25, 30, 35, 40, 45, 50, 60].map(n => [String(n), `${n} ނަންބަރު`]);
+
 // ------------------------------------------------------------ USERS
 export async function users(view) {
   const card = h("div.card", h("h2", "ޔޫޒަރުން ", h("small", "— ރޯލު ދޭނީ ސުޕަރ އެޑްމިން އެކަނި. ލޮގިން ވާނީ މީހާގެ އަމިއްލަ ގޫގުލް އީމެއިލް އިން.")));
@@ -95,6 +100,29 @@ export async function settings(view) {
   const cal = {};
   ["top", "bottom", "left", "right", "p12top", "p12bottom"].forEach(k => cal[k] = h("input", { type: "number", step: "0.1", value: m[k] }));
 
+  // ---- questions & lines for every category (the same values as in each category's editor) ----
+  const qCard = h("div.card", h("h2", "ދަރިވަރަކު ކިޔަވާނެ ސުވާލާއި ފޮޅުވަތް — ބައިތަކަށް"), spinner());
+  (async () => {
+    const cs = S.settings.activeCompetitionId ? await loadCategories(true) : [];
+    qCard.innerHTML = "";
+    qCard.appendChild(h("h2", "ދަރިވަރަކު ކިޔަވާނެ ސުވާލާއި ފޮޅުވަތް — ބައިތަކަށް"));
+    if (!cs.length) { qCard.appendChild(h("p.small.muted", "ހިނގަމުންދާ މުބާރާތުގައި ބައެއް ނެތް. 'މުބާރާތާއި ބައިތައް' ޓެބުން ބައިތައް ހައްދަވާ.")); return; }
+    qCard.appendChild(h("p.small.muted", "ސުވާލުގެ ޢަދަދު ދަރިވަރުގެ ސްކްރީނުގައި ފެންނާނެ (\"ތިޔަ ދަރިވަރު ކިޔަވާނީ 2 ސުވާލު...\"). 15 ފޮޅުވަތަށްވުރެ ގިނަނަމަ ސުވާލު ދެން ޞަފުޙާއަށް ދާނެ، އަދި ދަރިވަރުގެ ސްކްރީން ސްކްރޯލް ކުރެވޭނެ."));
+    const rows = cs.map(c => ({ c, q: select(QCOUNT_OPTS, String(c.qCount || 3)), mn: select(LINE_OPTS, String(c.minLines || 3)),
+      mx: select(LINE_OPTS, String(c.maxLines || 7)), g: select(GRID_OPTS, String(c.gridSize || S.settings.gridSize || 20)) }));
+    qCard.appendChild(h("div.tbl-wrap", h("table.tbl",
+      h("thead", h("tr", ["ބައި", "ގޮފި", "ސުވާލު", "މަދުވެގެން ފޮޅުވަތް", "ގިނަވެގެން ފޮޅުވަތް", "ގްރިޑް"].map(x => h("th", x)))),
+      h("tbody", rows.map(r => h("tr", h("td", h("b", r.c.name)), h("td", r.c.branch === "hifz" ? "ނުބަލައި" : "ބަލައިގެން"),
+        h("td", r.q), h("td", r.mn), h("td", r.mx), h("td", r.g)))))));
+    qCard.appendChild(h("div.row", { style: { marginTop: "10px" } }, h("button.btn.green", { onclick: async () => {
+      for (const r of rows) {
+        const qn = +r.q.value, mn = +r.mn.value, mx = Math.max(mn, +r.mx.value);
+        await updateDoc(doc(db, "categories", r.c.id), { qCount: qn, minLines: mn, maxLines: mx, gridSize: Math.max(+r.g.value, qn), updatedAt: serverTimestamp() });
+      }
+      cache.categories = null; audit("categories_qcount", { n: rows.length }); toast("ބައިތައް ސޭވްކުރެވިއްޖެ ✔");
+    } }, "💾 ބައިތައް ސޭވްކުރޭ")));
+  })();
+
   // ---- colour theme & royal Quran frame ----
   let themeVal = st.theme || DEFAULT_SETTINGS.theme;
   let frameVal = st.qframe == null ? DEFAULT_SETTINGS.qframe : +st.qframe;
@@ -136,6 +164,7 @@ export async function settings(view) {
       h("div.grid3", field("މަތީ ހުސްބައި %", cal.top), field("ތިރީ ހުސްބައި %", cal.bottom), field("ވާތް / ކަނާތް ހުސްބައި %", cal.left)),
       h("div.grid3", field("ކަނާތް %", cal.right), field("ޞަފުޙާ 1-2 މަތި %", cal.p12top), field("ޞަފުޙާ 1-2 ތިރި %", cal.p12bottom)),
       h("button.btn.blue", { onclick: () => calibrate() }, "🔍 ކެލިބްރޭޝަން ޗެކްކުރޭ")),
+    qCard,
     h("div.row", h("button.btn.primary.lg", { onclick: save }, "💾 ސެޓިންގްސް ސޭވްކުރޭ")));
 
 
@@ -250,20 +279,20 @@ export async function categories(view) {
       [sFrom, sTo].forEach(x => x.onchange = preview);
       preview();
     };
-    const qc = h("input", { type: "number", min: 1, max: 100, value: c.qCount });
-    const mnL = h("input", { type: "number", min: 1, max: 15, value: c.minLines }), mxL = h("input", { type: "number", min: 1, max: 15, value: c.maxLines });
-    const gs = h("input", { type: "number", min: 5, max: 40, value: c.gridSize || S.settings.gridSize });
+    const qc = select(QCOUNT_OPTS, String(c.qCount || 3));
+    const mnL = select(LINE_OPTS, String(c.minLines || 3)), mxL = select(LINE_OPTS, String(c.maxLines || 7));
+    const gs = select(GRID_OPTS, String(c.gridSize || S.settings.gridSize || 20));
     const hint = h("input", { type: "number", min: 0, max: 10, value: c.hifzHintWords ?? 3 });
     const jd = h("input", { type: "number", step: "0.25", value: c.jaliDed }), kd = h("input", { type: "number", step: "0.25", value: c.khafiDed });
     const ad = h("input", { type: "checkbox" }); ad.checked = c.autoDeduct !== false;
     const steps = h("input.ltr", { value: (c.deductSteps || [0.25, 0.5, 1]).join(", ") });
     const openReg = h("input", { type: "checkbox" }); openReg.checked = c.openForRegistration !== false;
     const prev = h("div.small.muted");
-    [mnL, mxL].forEach(x => x.oninput = preview);
+    [mnL, mxL].forEach(x => x.onchange = preview);
     function preview() {
       try {
         const n = buildCandidates({ type: sType.value, from: +sFrom.value, to: +sTo.value }, +mnL.value, +mxL.value).length;
-        prev.innerHTML = `މި މުޤައްރަރުން ${n} ސުވާލު ހެދެއެވެ (ހުރިހާ ސުވާލެއް އެއް ޞަފުޙާއެއްގެ ތެރޭގައި، މުޅި އާޔަތްތަކުން).` +
+        prev.innerHTML = `މި މުޤައްރަރުން ${n} ސުވާލު ހެދެއެވެ (މުޅި އާޔަތްތަކުން${+mxL.value > 15 ? "، 15 ފޮޅުވަތަށްވުރެ ގިނަ ސުވާލުތައް ދެން ޞަފުޙާއަށްވެސް ދާނެ — ދަރިވަރުގެ ސްކްރީން ސްކްރޯލް ކުރެވޭނެ" : "، ހުރިހާ ސުވާލެއް އެއް ޞަފުޙާއެއްގެ ތެރޭގައި"}).` +
           (n < 60 ? ` <b style="color:#ffb74d">ސުވާލު މަދު — ފޮޅުވަތުގެ އަދަދު ކުޑަކުރުން ނުވަތަ މުޤައްރަރު ބޮޑުކުރުން ރަނގަޅު.</b>` : "");
       } catch (e) { prev.textContent = ""; }
     }
@@ -289,7 +318,7 @@ export async function categories(view) {
       h("h3", "މުޤައްރަރު"),
       h("div.grid3", field("ހޮވާ ގޮތް", sType), fromBox, toBox), prev,
       h("h3", "ސުވާލު"),
-      h("div.grid4", field("ދަރިވަރަކަށް ސުވާލު ޢަދަދު (1–100)", qc), field("އެންމެ މަދު ފޮޅުވަތް", mnL), field("އެންމެ ގިނަ ފޮޅުވަތް", mxL), field("ގްރިޑް ގޮޅި", gs)),
+      h("div.grid4", field("ދަރިވަރަކު ކިޔަވާނެ ސުވާލުގެ ޢަދަދު", qc), field("އެންމެ މަދު ފޮޅުވަތް", mnL), field("އެންމެ ގިނަ ފޮޅުވަތް", mxL), field("ގްރިޑުގައި ނަންބަރު", gs)),
       field("ނުބަލައި ގޮފީގައި ދަރިވަރަށް ދައްކާ ފެށުމުގެ ކަލިމަ ޢަދަދު", hint),
       h("h3", "ރުބްރިކް (ނަން • key • މެކްސް)"), rubBox,
       h("h3", "ކުށުން މާކްސް ކެނޑުން"),
@@ -301,8 +330,8 @@ export async function categories(view) {
         const data = {
           competitionId: S.settings.activeCompetitionId, name: nm.value.trim(), order: +ord.value || 0, branch: br.value,
           ageGroup: ag.value, gender: gd.value, syllabus: { type: sType.value, from: +sFrom.value, to: +sTo.value },
-          qCount: Math.max(1, Math.min(100, +qc.value || 3)), minLines: +mnL.value || 3, maxLines: Math.max(+mnL.value, +mxL.value || 7),
-          gridSize: +gs.value || 20, hifzHintWords: +hint.value, rubric: rub, jaliDed: +jd.value, khafiDed: +kd.value,
+          qCount: Math.max(1, +qc.value || 3), minLines: +mnL.value || 3, maxLines: Math.max(+mnL.value, +mxL.value || 7),
+          gridSize: Math.max(+gs.value || 20, +qc.value || 1), hifzHintWords: +hint.value, rubric: rub, jaliDed: +jd.value, khafiDed: +kd.value,
           autoDeduct: ad.checked, deductSteps: steps.value.split(/[,\s]+/).map(Number).filter(x => x > 0),
           openForRegistration: openReg.checked, updatedAt: serverTimestamp()
         };

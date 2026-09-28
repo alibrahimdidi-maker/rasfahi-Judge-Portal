@@ -315,7 +315,7 @@ export async function students(view) {
     const c = h("div.card", { style: { border: "2px dashed var(--gold)" } },
       h("h2", "🧪 ނަމޫނާ ލިސްޓާއި ސިސްޓަމް ޓެސްޓް"),
       h("div.grid3", { style: { gap: "12px" } },
-        box("⬇ ނަމޫނާ ލިސްޓް ޑައުންލޯޑް",
+        box("⬇ ނަމޫނާ ލިސްޓު ޑައުންލޯޑް (Excel)",
           "2000 ދަރިވަރުންގެ ފުރިހަމަ މަޢުލޫމާތު: ނަން، އައިޑީ، ރެޖި ނަންބަރު، ދާއިމީ އެޑްރެސް، ބައި، ގޮފި، ޢުމުރުފުރާ، މުއައްސަސާ. " +
           "'މާކްސް އާއެކު' ފައިލުގައި 5 ޖަޖުންގެ މާކްސް، ފައިނަލް، ތަރި އަދި ވަނަ ހުންނާނެ. 'މާކްސް ހުސް' ފައިލުގައި މާކްސް ލިޔުމުން Excel އިން ޖުމްލަ، ފައިނަލް އަދި ތަރި ހިސާބުކުރާނެ.",
           h("button.btn.primary", { onclick: () => run("ފައިލު ހަދަނީ...", async () => { const n = await downloadSampleList(true); status.textContent = `✔ ${n} ދަރިވަރުންގެ ފައިލު ޑައުންލޯޑުވެއްޖެ (މާކްސް އާއެކު)`; }) }, "⬇ މާކްސް އާއެކު"),
@@ -335,7 +335,7 @@ export async function students(view) {
           "ސޮފްޓްވެއަރ ފޯމު ބޭނުންނުކުރެވޭ ޙާލަތުގައި ގޫގުލް ފޯމުން ނުވަތަ Excel ޝީޓަކުން ލިބޭ ލިސްޓް މިތަނުން ވައްދާ. " +
           "ފުރަތަމަ ހުސް ޓެމްޕްލޭޓް ޑައުންލޯޑްކޮށް، ކޮލަމްތައް އެގޮތަށް ފުރުއްވާ. (.xlsx ނުވަތަ .csv)",
           h("button.btn.orange", { onclick: () => importStudents() }, "📥 ފައިލު ހޮވާ"),
-          h("button.btn.sm", { onclick: () => downloadImportTemplate() }, "⬇ ހުސް ޓެމްޕްލޭޓް"))),
+          h("button.btn.sm", { onclick: () => run("ފައިލު ހަދަނީ...", async () => { await downloadImportTemplate(); status.textContent = "✔ ހުސް ޓެމްޕްލޭޓް ޑައުންލޯޑުވެއްޖެ"; }) }, "⬇ ހުސް ޓެމްޕްލޭޓް"))),
       status);
     return c;
   }
@@ -513,6 +513,32 @@ export async function students(view) {
 }
 
 // ------------------------------------------------------------ SESSIONS & SCHEDULE
+// ---- Dhivehi day names and number dropdowns
+const DAYS_DV = ["އާދިއްތަ", "ހޯމަ", "އަންގާރަ", "ބުދަ", "ބުރާސްފަތި", "ހުކުރު", "ހޮނިހިރު"];
+export const dayName = (iso) => { const d = new Date(iso + "T00:00:00"); return isNaN(d) ? "" : DAYS_DV[d.getDay()]; };
+const numOpts = (from, to, label = "") => Array.from({ length: to - from + 1 }, (_, i) => [String(from + i), `${from + i}${label}`]);
+const addMinutes = (hhmm, m) => { if (!hhmm) return ""; const [H, M] = hhmm.split(":").map(Number); const t = (H * 60 + M + m + 1440) % 1440;
+  return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); };
+
+// Copies each student's session (day, date, time, reporting time, place, order) onto his application,
+// so the student sees it on the registration page with email + name + phone.
+async function publishSchedule(studentsList, sessionsList) {
+  const sesById = Object.fromEntries(sessionsList.map(x => [x.id, x]));
+  const withApp = studentsList.filter(st => st.applicationId);
+  let n = 0;
+  for (let i = 0; i < withApp.length; i += 400) {
+    const b = writeBatch(db);
+    withApp.slice(i, i + 400).forEach(st => {
+      const se = sesById[st.sessionId];
+      b.update(doc(db, "applications", st.applicationId), { updatedAt: serverTimestamp(), schedule: se ? {
+        sessionName: se.name, date: se.date, day: dayName(se.date), time: se.time || "", reportTime: se.reportTime || "",
+        venue: se.venue || "", order: st.order || 0, note: se.publicNote || "" } : null });
+    });
+    try { await b.commit(); n += Math.min(400, withApp.length - i); } catch (e) { console.warn("publishSchedule", e); }
+  }
+  return n;
+}
+
 export async function sessions(view) {
   if (needComp(view)) return;
   const cats = await loadCategories();
@@ -534,12 +560,14 @@ export async function sessions(view) {
     box.innerHTML = "";
     if (!list.length) return box.appendChild(empty("ސެޝަނެއް ނެތް"));
     box.appendChild(h("div.tbl-wrap", h("table.tbl",
-      h("thead", h("tr", ["ސެޝަން", "ތާރީޚް", "ވަގުތު", "ތަން", "ބައިތައް", "ޗީފް ޖަޖު", "ޖަޖުން", "ދަރިވަރުން", "ޙާލަތު", ""].map(x => h("th", x)))),
+      h("thead", h("tr", ["ސެޝަން", "ދުވަސް / ތާރީޚް", "ހާޟިރުވާ / ފަށާ", "ތަން", "ބައިތައް", "ޗީފް ޖަޖު", "ޖަޖުން", "ދަރިވަރުން", "ޙާލަތު", ""].map(x => h("th", x)))),
       h("tbody", list.map(s => h("tr",
-        h("td", h("b", s.name)), h("td.ltr", s.date), h("td.ltr", s.time || ""), h("td", s.venue || ""),
+        h("td", h("b", s.name)), h("td", dayName(s.date) + " ", h("span.ltr", s.date)),
+        h("td.ltr", (s.reportTime ? s.reportTime + " / " : "") + (s.time || "")), h("td", s.venue || ""),
         h("td.small", (s.categoryIds || []).map(id => (catById(id) || {}).name).join("، ")),
         h("td", s.chiefName || s.chiefEmail || "-"), h("td.small", (s.judges || []).map(j => j.slot + ". " + j.name).join("، ")),
-        h("td", (s.order || []).length), h("td", h("span.tag." + (ST[s.status] || ST.planned)[1], (ST[s.status] || ST.planned)[0])),
+        h("td", h("span" + ((s.order || []).length > (s.capacity || 1e9) ? ".tag.red" : ""), `${(s.order || []).length}${s.capacity ? " / " + s.capacity : ""}`)),
+        h("td", h("span.tag." + (ST[s.status] || ST.planned)[1], (ST[s.status] || ST.planned)[0])),
         h("td", h("div.row",
           h("button.btn.sm", { onclick: () => edit(s) }, "އެޑިޓް"),
           h("button.btn.sm.blue", { onclick: () => assign(s) }, "ދަރިވަރުން / ތަރުތީބު"),
@@ -552,6 +580,10 @@ export async function sessions(view) {
     const s = s0 ? JSON.parse(JSON.stringify(s0)) : { name: "", date: todayISO(), time: "09:00", venue: "", categoryIds: [], judges: [], chiefEmail: "", status: "planned" };
     const nm = h("input", { value: s.name }), dt = h("input", { type: "date", value: s.date }), tm = h("input", { type: "time", value: s.time || "" });
     const vn = h("input", { value: s.venue || "" });
+    const rp = select([["", "—"], ...[15, 30, 45, 60, 90, 120].map(m => [String(m), `ފެށުމުގެ ${m} މިނިޓު ކުރިން`])],
+      s.reportBefore != null ? String(s.reportBefore) : "30");
+    const capSel = select(numOpts(1, 200, " ދަރިވަރުން"), String(s.capacity || 25));
+    const pNote = h("input", { value: s.publicNote || "", placeholder: "މިސާލު: އައިޑީ ކާޑު ގެންނަވާ" });
     const catChecks = cats.map(c => { const cb = h("input", { type: "checkbox", value: c.id }); cb.checked = (s.categoryIds || []).includes(c.id); return h("label.row", cb, c.name); });
     const ch = select([["", "— ހޮވާ —"], ...chiefs.map(u => [u.email, u.name])], s.chiefEmail);
     const jBox = h("div");
@@ -569,12 +601,17 @@ export async function sessions(view) {
     drawJ();
     const ok = await modal(s0 ? "ސެޝަން އެޑިޓް" : "އާ ސެޝަނެއް", h("div",
       h("div.grid2", field("ސެޝަނުގެ ނަން (މިސާލު: ހެނދުނު ދަންފަޅި 1)", nm), field("ތަން / ހޯލް", vn)),
-      h("div.grid2", field("ތާރީޚް", dt), field("ފަށާ ވަގުތު", tm)),
+      h("div.grid3", field("ތާރީޚް", dt), field("ފަށާ ވަގުތު", tm), field("ދަރިވަރުން ހާޟިރުވާންވީ", rp)),
+      h("div.grid2", field("ސެޝަނަކަށް ދަރިވަރުން (އެންމެ ގިނަވެގެން)", capSel), field("ދަރިވަރުންނަށް ނޯޓު (ފޯމުގެ ސްކްރީނުގައި ފެންނާނެ)", pNote)),
       h("h3", "ބައިތައް"), h("div.grid3", catChecks),
       h("div.grid2", field("ޗީފް ޖަޖު", ch), h("div", h("h3", "ޖަޖުން (ތަރުތީބުން)"), jBox))),
       [...(s0 ? [{ label: "🗑", cls: "red", onClick: async () => {
         if (!await confirmBox("ސެޝަން ފޮހެލުން", "ފޮހެލަންވީތޯ؟", "ފޮހެލާ", "red")) return false;
-        await deleteDoc(doc(db, "sessions", s0.id)); audit("session_delete", { id: s0.id }); return true; } }] : []),
+        await deleteDoc(doc(db, "sessions", s0.id));
+        const gone = studs.filter(st => st.sessionId === s0.id);
+        if (gone.length) { const b = writeBatch(db); gone.forEach(st => b.update(doc(db, "students", st.id), { sessionId: "", order: 0 })); await b.commit();
+          await publishSchedule(gone.map(st => ({ ...st, sessionId: "" })), []); }
+        audit("session_delete", { id: s0.id }); return true; } }] : []),
       { label: "ކެންސަލް" }, { label: "ސޭވް", cls: "primary", onClick: async () => {
         const catIds = catChecks.map(l => l.querySelector("input")).filter(c => c.checked).map(c => c.value);
         if (!nm.value.trim() || !dt.value || !catIds.length) { toast("ނަމާއި ތާރީޚާއި ބައި ހޮއްވަވާ", "err"); return false; }
@@ -583,10 +620,12 @@ export async function sessions(view) {
         const chief = chiefs.find(u => u.email === ch.value);
         const data = { competitionId: S.settings.activeCompetitionId, name: nm.value.trim(), date: dt.value, time: tm.value, venue: vn.value.trim(),
           categoryIds: catIds, chiefEmail: ch.value, chiefName: chief ? chief.name : "", judges: jSel, judgeEmails: jSel.map(j => j.email),
-          updatedAt: serverTimestamp() };
+          reportBefore: rp.value === "" ? null : +rp.value, reportTime: rp.value === "" ? "" : addMinutes(tm.value, -(+rp.value)),
+          capacity: +capSel.value, publicNote: pNote.value.trim(), updatedAt: serverTimestamp() };
         if (!s0) Object.assign(data, { status: "planned", order: [], createdAt: serverTimestamp() });
         const id = s0 ? s0.id : "S" + dt.value.replace(/-/g, "") + "_" + Math.random().toString(36).slice(2, 6);
         await setDoc(doc(db, "sessions", id), data, { merge: true });
+        if (s0) await publishSchedule(studs.filter(st => st.sessionId === id), [{ ...s0, ...data, id }]);   // date / time / place changed
         audit("session_save", { id }); return true;
       } }], { wide: true });
     if (ok) { cache.sessions = null; load(); }
@@ -599,7 +638,8 @@ export async function sessions(view) {
     const other = (st) => st.sessionId && st.sessionId !== s.id ? (list.find(x => x.id === st.sessionId) || {}).name : "";
     const draw2 = () => {
       listBox.innerHTML = ""; poolBox.innerHTML = "";
-      listBox.appendChild(h("h3", `ތަރުތީބު (${order.length})`));
+      listBox.appendChild(h("h3", `ތަރުތީބު (${order.length}${s.capacity ? " / " + s.capacity : ""})`,
+        s.capacity && order.length > s.capacity ? h("span.tag.red", { style: { marginInlineStart: "8px" } }, "ޖާގައަށްވުރެ ގިނަ") : null));
       order.forEach((id, i) => { const st = byId(id);
         listBox.appendChild(h("div.queue-item", h("b", i + 1), photoTag(st.photoThumb), h("div.grow", st.name, h("div.small.muted", st.regNo + " • " + st.categoryName)),
           h("button.btn.sm", { onclick: () => { if (i) { [order[i - 1], order[i]] = [order[i], order[i - 1]]; draw2(); } } }, "▲"),
@@ -623,43 +663,82 @@ export async function sessions(view) {
         b.update(doc(db, "sessions", s.id), { order });
         order.forEach((id, i) => b.update(doc(db, "students", id), { sessionId: s.id, order: i + 1 }));
         (s.order || []).filter(id => !order.includes(id)).forEach(id => { if (byId(id).sessionId === s.id) b.update(doc(db, "students", id), { sessionId: "", order: 0 }); });
-        await b.commit(); audit("session_assign", { id: s.id, n: order.length }); return true;
+        await b.commit();
+        const touched = studs.filter(st => order.includes(st.id) || (s.order || []).includes(st.id))
+          .map(st => ({ ...st, sessionId: order.includes(st.id) ? s.id : (st.sessionId === s.id ? "" : st.sessionId), order: order.includes(st.id) ? order.indexOf(st.id) + 1 : st.order }));
+        await publishSchedule(touched, [s, ...list]);
+        audit("session_assign", { id: s.id, n: order.length }); return true;
       } }], { wide: true });
     if (ok) { toast("ސޭވް ކުރެވިއްޖެ"); load(); }
   }
   async function autoSchedule() {
-    const catSel = select(cats.map(c => [c.id, c.name]), cats[0] && cats[0].id);
+    const catSel = select([["*", "ހުރިހާ ބައެއް (ކޮންމެ ބައެއް ވަކިވަކި)"], ...cats.map(c => [c.id, c.name])], "*");
     const dt = h("input", { type: "date", value: todayISO() }), tm = h("input", { type: "time", value: "09:00" });
-    const cap = h("input", { type: "number", value: 25, min: 1 }), vn = h("input", { placeholder: "ހޯލް" });
+    const cap = select(numOpts(1, 200, " ދަރިވަރުން"), "25");
+    const perDay = select(numOpts(1, 6, " ސެޝަން"), "1");
+    const gap = select([["60", "1 ގަޑިއިރު"], ["90", "1.5 ގަޑިއިރު"], ["120", "2 ގަޑިއިރު"], ["150", "2.5 ގަޑިއިރު"], ["180", "3 ގަޑިއިރު"], ["240", "4 ގަޑިއިރު"]], "180");
+    const rp = select([["", "—"], ...[15, 30, 45, 60, 90, 120].map(m => [String(m), `ފެށުމުގެ ${m} މިނިޓު ކުރިން`])], "30");
+    const vn = h("input", { placeholder: "ހޯލް / ތަން" }), pNote = h("input", { placeholder: "މިސާލު: އައިޑީ ކާޑު ގެންނަވާ" });
+    const skipFri = h("input", { type: "checkbox" }); skipFri.checked = true;
+    const orderBy = select([["random", "🎲 ރެންޑަމް"], ["reg", "ރެޖިސްޓްރޭޝަން ނަންބަރަށް"], ["name", "ނަމަށް"]], "random");
     const ch = select([["", "— ޗީފް ޖަޖު —"], ...chiefs.map(u => [u.email, u.name])], "");
     const jChecks = judges.map(u => { const c = h("input", { type: "checkbox", value: u.email }); return h("label.row", c, u.name); });
-    const ok = await modal("އޮޓޯ ޝެޑިއުލް — ސެޝަނަކަށް ނުލެވޭ ދަރިވަރުން ބަހާލާ", h("div",
-      field("ބައި", catSel), h("div.grid3", field("ފަށާ ތާރީޚް", dt), field("ވަގުތު", tm), field("ސެޝަނަކަށް ދަރިވަރުން", cap)),
-      h("div.grid2", field("ތަން", vn), field("ޗީފް ޖަޖު", ch)), h("h3", "ޖަޖުން"), h("div.grid3", jChecks),
-      h("p.small.muted", "ކޮންމެ ދުވަހަކަށް އެއް ސެޝަން. ދަރިވަރުން ރެންޑަމް ތަރުތީބަކަށް.")),
+    const prev = h("div.small.muted", { style: { marginTop: "8px" } });
+    const pools = () => (catSel.value === "*" ? cats : cats.filter(c => c.id === catSel.value))
+      .map(c => ({ cat: c, pool: studs.filter(st => st.categoryId === c.id && !st.sessionId && st.status !== "withdrawn") })).filter(x => x.pool.length);
+    const showPrev = () => {
+      const ps = pools(), n = +cap.value;
+      const total = ps.reduce((a, x) => a + x.pool.length, 0), sesN = ps.reduce((a, x) => a + Math.ceil(x.pool.length / n), 0);
+      prev.textContent = total ? `ސެޝަނަކަށް ނުލެވޭ ${total} ދަރިވަރުން → ${sesN} ސެޝަން • ${Math.ceil(sesN / +perDay.value)} ދުވަސް` : "ސެޝަނަކަށް ނުލެވޭ ދަރިވަރަކު ނެތް";
+    };
+    [catSel, cap, perDay].forEach(x => x.onchange = showPrev); showPrev();
+    const ok = await modal("⚡ އޮޓޯ ޝެޑިއުލް — ސެޝަނަކަށް ނުލެވޭ ދަރިވަރުން ބަހާލާ", h("div",
+      h("div.grid2", field("ބައި", catSel), field("ސެޝަނަކަށް ދަރިވަރުން", cap)),
+      h("div.grid3", field("ފަށާ ތާރީޚް", dt), field("ފުރަތަމަ ސެޝަން ފަށާ ގަޑި", tm), field("ދަރިވަރުން ހާޟިރުވާންވީ", rp)),
+      h("div.grid3", field("ދުވަހަކަށް ސެޝަން", perDay), field("ސެޝަންތަކުގެ ދެމެދު", gap), field("ތަރުތީބު", orderBy)),
+      h("div.grid2", field("ތަން", vn), field("ދަރިވަރުންނަށް ނޯޓު", pNote)),
+      h("label.row", skipFri, "ހުކުރު ދުވަސް ދޫކޮށްލާ"),
+      h("div.grid2", field("ޗީފް ޖަޖު", ch), h("div", h("h3", "ޖަޖުން (ތަރުތީބުން)"), h("div.grid2", jChecks))), prev,
+      h("p.small.muted", "ޝެޑިއުލް ހެދުމާއެކު ކޮންމެ ދަރިވަރަކަށް ހާޟިރުވާންވީ ދުވަހާއި ގަޑިއާއި ތަން ރަޖިސްޓްރޭޝަން ފޯމުގެ ސްކްރީނުން ފެންނާނެ.")),
       [{ label: "ކެންސަލް" }, { label: "ހަދާ", cls: "primary", onClick: async () => {
         const js = jChecks.map(l => l.querySelector("input")).filter(c => c.checked).map((c, i) => { const u = judges.find(x => x.email === c.value); return { email: u.email, name: u.name, slot: i + 1 }; });
         if (!ch.value || !js.length) { toast("ޗީފް ޖަޖާއި ޖަޖުން ހޮއްވަވާ", "err"); return false; }
-        const pool = studs.filter(s => s.categoryId === catSel.value && !s.sessionId);
-        if (!pool.length) { toast("ސެޝަނަކަށް ނުލެވޭ ދަރިވަރަކު ނެތް", "warn"); return false; }
-        const r = new Uint32Array(pool.length); crypto.getRandomValues(r);
-        for (let i = pool.length - 1; i > 0; i--) { const j = r[i] % (i + 1); [pool[i], pool[j]] = [pool[j], pool[i]]; }
-        const n = Math.max(1, +cap.value || 25), cat = catById(catSel.value), chief = chiefs.find(u => u.email === ch.value);
-        const d0 = new Date(dt.value);
-        for (let k = 0; k * n < pool.length; k++) {
-          const part = pool.slice(k * n, k * n + n);
-          const d = new Date(d0.getTime() + k * 86400000).toISOString().slice(0, 10);
-          const id = "S" + d.replace(/-/g, "") + "_" + Math.random().toString(36).slice(2, 6);
-          const b = writeBatch(db);
-          b.set(doc(db, "sessions", id), { competitionId: S.settings.activeCompetitionId, name: `${cat.name} — ${k + 1}`, date: d, time: tm.value, venue: vn.value,
-            categoryIds: [cat.id], chiefEmail: chief.email, chiefName: chief.name, judges: js, judgeEmails: js.map(j => j.email), status: "planned",
-            order: part.map(p => p.id), createdAt: serverTimestamp() });
-          part.forEach((p, i) => b.update(doc(db, "students", p.id), { sessionId: id, order: i + 1 }));
-          await b.commit();
+        const ps = pools();
+        if (!ps.length) { toast("ސެޝަނަކަށް ނުލެވޭ ދަރިވަރަކު ނެތް", "warn"); return false; }
+        const n = +cap.value, per = +perDay.value, chief = chiefs.find(u => u.email === ch.value);
+        let day = new Date(dt.value + "T00:00:00"), slot = 0;
+        const nextSlot = () => {
+          if (slot >= per) { slot = 0; day = new Date(day.getTime() + 86400000); }
+          while (skipFri.checked && day.getDay() === 5) day = new Date(day.getTime() + 86400000);
+          const time = addMinutes(tm.value, slot * +gap.value); slot++;
+          const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+          return { date: iso, time };
+        };
+        const made = [], moved = [];
+        for (const { cat, pool } of ps) {
+          if (orderBy.value === "reg") pool.sort((a, b) => String(a.regNo).localeCompare(String(b.regNo)));
+          else if (orderBy.value === "name") pool.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+          else { const r = new Uint32Array(pool.length); crypto.getRandomValues(r); for (let i = pool.length - 1; i > 0; i--) { const j = r[i] % (i + 1); [pool[i], pool[j]] = [pool[j], pool[i]]; } }
+          for (let k = 0; k * n < pool.length; k++) {
+            const part = pool.slice(k * n, k * n + n), when = nextSlot();
+            const id = "S" + when.date.replace(/-/g, "") + "_" + when.time.replace(":", "") + "_" + Math.random().toString(36).slice(2, 6);
+            const data = { competitionId: S.settings.activeCompetitionId, name: `${cat.name} — ${k + 1}`, date: when.date, time: when.time,
+              reportBefore: rp.value === "" ? null : +rp.value, reportTime: rp.value === "" ? "" : addMinutes(when.time, -(+rp.value)),
+              venue: vn.value.trim(), publicNote: pNote.value.trim(), capacity: n,
+              categoryIds: [cat.id], chiefEmail: chief.email, chiefName: chief.name, judges: js, judgeEmails: js.map(j => j.email), status: "planned",
+              order: part.map(p => p.id), createdAt: serverTimestamp() };
+            const b = writeBatch(db);
+            b.set(doc(db, "sessions", id), data);
+            part.forEach((p, i) => { b.update(doc(db, "students", p.id), { sessionId: id, order: i + 1 }); moved.push({ ...p, sessionId: id, order: i + 1 }); });
+            await b.commit();
+            made.push({ id, ...data });
+          }
         }
-        audit("auto_schedule", { cat: cat.id, n: pool.length }); return true;
+        await publishSchedule(moved, made);
+        audit("auto_schedule", { sessions: made.length, n: moved.length });
+        toast(`✔ ${made.length} ސެޝަން • ${moved.length} ދަރިވަރުން`); return true;
       } }], { wide: true });
-    if (ok) { toast("ޝެޑިއުލް ހެދިއްޖެ"); cache.sessions = null; load(); }
+    if (ok) { cache.sessions = null; load(); }
   }
   load();
 }
