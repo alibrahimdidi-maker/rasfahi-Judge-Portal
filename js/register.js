@@ -17,7 +17,36 @@ const params = new URLSearchParams(location.search);
 
 const AGE_GROUPS = { U6: "6 އަހަރުން ދަށް", U9: "9 އަހަރުން ދަށް", U11: "11 އަހަރުން ދަށް", U13: "13 އަހަރުން ދަށް", U16: "16 އަހަރުން ދަށް", U19: "19 އަހަރުން ދަށް", U21: "21 އަހަރުން ދަށް", GEN: "ޢާއްމު ބައި", SN: "ނުކުޅެދުންތެރިކަން ހުންނަ" };
 const INST = [["School", "ސްކޫލް"], ["University", "ޔުނިވަރސިޓީ / ކޮލެޖް"], ["QuranClass", "ޤުރްއާން ކްލާސް"], ["Club", "ކްލަބް / ޖަމްޢިއްޔާ"], ["Office", "އޮފީސް"], ["Private", "އަމިއްލަ ގޮތުން"]];
-const STATUS = { submitted: "ހުށަހެޅިއްޖެ — ބަލަމުންދަނީ", resubmitted: "އަލުން ހުށަހެޅިއްޖެ — ބަލަމުންދަނީ", needs_fix: "ރަނގަޅުކުރަން ޖެހޭ ކަންކަން އެބަހުއްޓެވެ", approved: "ގަބޫލުކުރެވިއްޖެ ✔", rejected: "ގަބޫލު ނުކުރެވުނު" };
+const STATUS = { submitted: "ފޯމު ހުށަހެޅިއްޖެ — ބަލަމުން ދަނީ", resubmitted: "އަލުން ހުށަހެޅިއްޖެ — ބަލަމުން ދަނީ", needs_fix: "ރަނގަޅުކުރަން ޖެހޭ ކަންކަން އެބަހުއްޓެވެ", approved: "ތިޔަ ދަރިވަރު ހޮވިއްޖެ ✔", rejected: "މި ފަހަރު ހޮވިފައެއް ނުވޭ" };
+const DAYS_DV = ["އާދިއްތަ", "ހޯމަ", "އަންގާރަ", "ބުދަ", "ބުރާސްފަތި", "ހުކުރު", "ހޮނިހިރު"];
+const dayOf = (iso) => { const d = new Date(iso + "T00:00:00"); return isNaN(d) ? "" : DAYS_DV[d.getDay()]; };
+const fmtDate = (iso) => { const d = new Date(iso + "T00:00:00"); return isNaN(d) ? (iso || "") : `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`; };
+
+// what the applicant sees after entering email + name + phone: selection and, when ready, the day / time / place
+function scheduleCard(a) {
+  if (a.status === "approved") {
+    const sc = a.schedule;
+    if (!sc || !sc.date) return `<div class="card sched wait"><h3>📅 ހާޟިރުވާންވީ ދުވަސް</h3>
+      <p>ތިޔަ ދަރިވަރު މުބާރާތަށް ހޮވިއްޖެ. ކިޔަވަން ހާޟިރުވާންވީ ދުވަހާއި ތާރީޚާއި ގަޑިއާއި ތަން ޝެޑިއުލް ހެދުމުން <b>މި ސްކްރީނުން</b> ފެންނާނެ.</p>
+      <p class="big-wait">އިންތިޒާރުކޮށްލައްވާ!</p></div>`;
+    const row = (k, v) => v ? `<tr><th>${k}</th><td>${v}</td></tr>` : "";
+    return `<div class="card sched ok"><h3>📅 ކިޔަވަން ހާޟިރުވާންވީ</h3>
+      <table class="tbl sched-tbl">
+        ${row("ދުވަސް", esc(sc.day || dayOf(sc.date)))}
+        ${row("ތާރީޚް", `<span class="ltr">${esc(fmtDate(sc.date))}</span>`)}
+        ${row("ހާޟިރުވާންވީ ގަޑި", sc.reportTime ? `<b class="ltr">${esc(sc.reportTime)}</b>` : "")}
+        ${row("ސެޝަން ފަށާ ގަޑި", `<span class="ltr">${esc(sc.time || "")}</span>`)}
+        ${row("ތަން", esc(sc.venue || ""))}
+        ${row("ސެޝަން", esc(sc.sessionName || ""))}
+        ${row("ތަރުތީބު", sc.order ? "#" + esc(sc.order) : "")}
+      </table>
+      ${sc.note ? `<p class="sched-note">📌 ${esc(sc.note)}</p>` : ""}
+      <p class="small muted">ބަދަލެއް އައިސްފިނަމަ މި ސްކްރީނުގައި ފެންނާނެ. ހާޟިރުވާއިރު އައިޑީ ކާޑު ގެންނަވާ.</p></div>`;
+  }
+  if (a.status === "submitted" || a.status === "resubmitted")
+    return `<div class="card sched wait"><p>ފޯމު ބަލަމުން ދަނީ. ހޮވުނުކަމާއި ހާޟިރުވާންވީ ދުވަސް މި ސްކްރީނުން ފެންނާނެ. އިންތިޒާރުކޮށްލައްވާ!</p></div>`;
+  return "";
+}
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const digits = (s) => String(s || "").replace(/\D/g, "");
@@ -47,14 +76,17 @@ function head() {
 }
 
 function gate() {
-  root.innerHTML = head() + `<div class="card"><h2>ފޯމު ހުޅުވުމަށް</h2>
-    <p class="small muted">ފޯމު ހުޅުވޭނީ ތިރީގައިވާ 3 ކަން ޖެއްސެވުމުން. ފަހުން ފޯމު ބެއްލެވުމަށް ނުވަތަ ރަނގަޅުކުރުމަށް ހަމަ މި 3 ކަން ޖައްސަވާ.</p>
+  root.innerHTML = head() + `<div class="card"><h2>ފޯމު ހުށަހެޅުމަށް / ޙާލަތު ބެއްލެވުމަށް</h2>
+    <p class="small muted">ތިރީގައިވާ 3 ކަން ޖެއްސެވުމުން އާ ފޯމެއް ހުޅުވޭނެ. ކުރިން ފޯމު ހުށަހަޅާފައިވާނަމަ، ހަމަ މި 3 ކަން ޖެއްސެވުމުން
+    ފޯމުގެ ޙާލަތާއި، ހޮވުނުކަމާއި، ކިޔަވަން ހާޟިރުވާންވީ ދުވަހާއި ގަޑިއާއި ތަން ފެންނާނެ.</p>
     <div class="grid3">
       <label class="field"><span class="req">އީމެއިލް</span><input id="gEmail" class="ltr" type="email" autocomplete="email"></label>
       <label class="field"><span class="req">ދަރިވަރުގެ ފުރިހަމަ ނަން</span><input id="gName" autocomplete="name"></label>
       <label class="field"><span class="req">މޯބައިލް ނަންބަރު</span><input id="gPhone" class="ltr" type="tel" inputmode="tel" autocomplete="tel"></label>
     </div>
-    <button class="btn primary lg" id="gGo">ކުރިއަށް ⟵</button>
+    <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn primary lg" id="gGo">ފޯމު ހުށަހަޅާ / ޙާލަތު ބަލާ ⟵</button>
+      <span class="small muted">📅 ހޮވިފައިވާނަމަ ހާޟިރުވާންވީ ދުވަހާއި ގަޑި މިތަނުން ފެންނާނެ</span></div>
     ${REG.open ? "" : `<p class="tag red" style="margin-top:10px">ރަޖިސްޓްރޭޝަން މިހާރު ބަންދު. ކުރިން ފޮނުވި ފޯމު ބެއްލެވޭނެ.</p>`}
     ${REG.contact ? `<p class="small muted">ސުވާލެއް އޮތްނަމަ: ${esc(REG.contact)}</p>` : ""}</div>`;
   const go = async () => {
@@ -83,7 +115,7 @@ function showExisting() {
     <div>${esc(a.name)} • ${esc(a.nid || "")} • ${esc(a.categoryName || "")}</div>
     ${a.regNo ? `<div class="tag gold" style="margin-top:6px">ރަޖިސްޓްރޭޝަން ނަންބަރު: ${esc(a.regNo)}</div>` : ""}
     ${a.status === "needs_fix" ? `<div style="margin-top:10px"><b>ރަނގަޅުކުރަންޖެހޭ ކަންކަން:</b><ul>${(a.fixItems || []).map(i => `<li>${esc(i)}</li>`).join("")}</ul>${a.adminNotes ? `<p>${esc(a.adminNotes)}</p>` : ""}</div>` : ""}
-    ${a.status === "rejected" && a.adminNotes ? `<p>${esc(a.adminNotes)}</p>` : ""}</div>`;
+    ${a.status === "rejected" && a.adminNotes ? `<p>${esc(a.adminNotes)}</p>` : ""}</div>` + scheduleCard(a);
   root.innerHTML = html + `<div id="formBox"></div>`;
   if (a.status === "needs_fix") form(a, true);
   else root.insertAdjacentHTML("beforeend", `<div class="card">${summary(a)}</div><button class="btn" onclick="location.href='register.html'">⟵ ފަހަތަށް</button>`);

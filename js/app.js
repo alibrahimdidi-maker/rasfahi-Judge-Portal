@@ -9,7 +9,7 @@ import {
 // apply the last-used colour theme before anything draws (settings load later)
 try { const t = localStorage.getItem("rasfahiTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 
-const V = (file, fn) => async () => (await import(`./views/${file}.js?v=6`))[fn];
+const V = (file, fn) => async () => (await import(`./views/${file}.js?v=7`))[fn];
 
 // Tabs for each role. Only what the super admin gave to the role is available.
 const NAV = {

@@ -121,16 +121,20 @@ export function describeSyllabus(syl) {
 // ---------- question candidates ----------
 // Each candidate: whole āyāt, same sūrah, all words on ONE page, line count within [minL, maxL]
 export function buildCandidates(syl, minL = 3, maxL = 7) {
+  // up to 15 lines: a question never crosses a page (as before).
+  // more than 15 lines (long passages): whole āyāt of one sūrah, may continue onto the next pages.
+  const multi = maxL > 15;
   const [A0, A1] = syllabusAyahRange(syl);
   const out = [];
   const onOnePage = (k) => pageOfWord(ayahStart(k)) === pageOfWord(ayahEnd(k) - 1);
   for (let i = A0; i <= A1; i++) {
-    if (!onOnePage(i)) continue;
+    if (!multi && !onOnePage(i)) continue;
     const s = surahOfAyah(i), p = pageOfWord(ayahStart(i));
     const l0 = lineOfWord(ayahStart(i));
     let chosen = -1;
     for (let j = i; j <= A1; j++) {
-      if (surahOfAyah(j) !== s || !onOnePage(j) || pageOfWord(ayahStart(j)) !== p) break;
+      if (surahOfAyah(j) !== s) break;
+      if (!multi && (!onOnePage(j) || pageOfWord(ayahStart(j)) !== p)) break;
       const lines = lineOfWord(ayahEnd(j) - 1) - l0 + 1;
       if (lines > maxL) { if (j === i && lines <= maxL + 4) chosen = j; break; }
       if (lines >= minL) { chosen = j; break; }
@@ -140,12 +144,20 @@ export function buildCandidates(syl, minL = 3, maxL = 7) {
     const li0 = lineOfWord(ws), li1 = lineOfWord(we - 1);
     out.push({
       id: `${ayahKey(i)}-${ayahKey(chosen)}`, surah: s, surahName: surahName(s),
-      ayahFrom: ayahNo(i), ayahTo: ayahNo(chosen), page: p, juz: juzOfWord(ws),
+      ayahFrom: ayahNo(i), ayahTo: ayahNo(chosen), page: p, pageTo: pageOfWord(we - 1), juz: juzOfWord(ws),
       lineFrom: slotOfLine(li0), lineTo: slotOfLine(li1), lines: li1 - li0 + 1,
       wStart: ws, wEnd: we, startKey: ayahKey(i), endKey: ayahKey(chosen)
     });
   }
   return out;
+}
+// pages a question sits on (1 page, or several for long passages)
+export function questionPages(q) {
+  const out = []; for (let p = q.page; p <= (q.pageTo || q.page); p++) out.push(p); return out;
+}
+// the question on its mushaf page(s)
+export function renderQuestion(q, opts = {}) {
+  return questionPages(q).map(p => renderPage(p, { ...opts, range: [q.wStart, q.wEnd] })).join("");
 }
 
 // Grid generation with no repeated start/end keys from `recent` (array of {s,e})
@@ -193,7 +205,8 @@ function tanzilAt(k, j) {
 export function portion(q) {
   if (!q) return null;
   const s = Q.hafs.surahs[q.surah - 1] || {};
-  return { surahNo: q.surah, surahAr: s.ar || q.surahName, juz: q.juz, page: q.page, from: q.ayahFrom, to: q.ayahTo, lineFrom: q.lineFrom, lineTo: q.lineTo };
+  const pages = q.pageTo && q.pageTo !== q.page ? `${q.page}–${q.pageTo}` : q.page;
+  return { surahNo: q.surah, surahAr: s.ar || q.surahName, juz: q.juz, page: pages, from: q.ayahFrom, to: q.ayahTo, lineFrom: q.lineFrom, lineTo: q.lineTo, lines: q.lines };
 }
 export function renderPage(p, opts = {}) {
   const H = Q.hafs, layout = Q.pageLayout[p] || [];
