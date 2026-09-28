@@ -835,8 +835,7 @@ async function sessionPackage(s, studs) {
     h("p.small.muted", `${rows.length} ދަރިވަރުން • ހުރިހާ ޝީޓެއްގައި ހަމަ އެއް ތަރުތީބު ނަންބަރު (#1 … #${rows.length})`), ...checks), [{ label: "ކެންސަލް" }, { label: "🖨 ޕްރިންޓް", cls: "primary", value: true }]);
   if (!ok) return;
   const want = new Set(checks.map(l => l.querySelector("input")).filter(c => c.checked).map(c => c.value));
-  const head = `<div class="sess-head"><div><b>${esc(s.name)}</b></div><div>${esc(dayDv(s.date))} ${esc(s.date || "")} • ފަށާ ގަޑި: <b>${esc(s.time || "")}</b>${s.reportTime ? ` • ހާޟިރުވާ ގަޑި: <b>${esc(s.reportTime)}</b>` : ""} • ${esc(s.venue || "")}</div>
-    <div class="small">ޗީފް ޖަޖު: ${esc(s.chiefName || "")} • ޖަޖުން: ${(s.judges || []).map(j => esc(j.slot + ". " + j.name)).join("، ")}</div></div>`;
+  const head = sessHeadHTML(s);
   const pb = `<div style="page-break-after:always"></div>`;
   const out = [];
   if (want.has("notice")) out.push(`<h2 style="text-align:center">ނޯޓިސް ބޯޑު</h2>` + head + tableHTML([
@@ -888,65 +887,113 @@ export async function scheduleAccess(view) {
 }
 
 // ------------------------------------------------------------ PRINT CENTRE
+// session header used on every printed sheet (same as the 📦 session package)
+const SESS_CSS = `<style>.sess-head{border:2px solid #000;border-radius:6px;padding:6px 10px;margin:6px 0 10px;text-align:center;line-height:1.8}</style>`;
+function sessHeadHTML(s) {
+  if (!s) return `<div class="sess-head"><b>ސެޝަނަކަށް ނުލާ ދަރިވަރުން</b></div>`;
+  return `<div class="sess-head"><div><b>${esc(s.name)}</b></div><div>${esc(dayDv(s.date))} ${esc(s.date || "")} • ފަށާ ގަޑި: <b>${esc(s.time || "")}</b>${s.reportTime ? ` • ހާޟިރުވާ ގަޑި: <b>${esc(s.reportTime)}</b>` : ""} • ${esc(s.venue || "")}</div>
+    <div class="small">ޗީފް ޖަޖު: ${esc(s.chiefName || "")} • ޖަޖުން: ${(s.judges || []).map(j => esc(j.slot + ". " + j.name)).join("، ")}</div></div>`;
+}
+
 export async function prints(view) {
   if (needComp(view)) return;
   const [cats, sess] = await Promise.all([loadCategories(), loadSessions(true)]);
   const studs = (await getDocs(query(collection(db, "students"), where("competitionId", "==", S.settings.activeCompetitionId)))).docs.map(d => ({ id: d.id, ...d.data() }));
-  const fSes = select([["", "ހުރިހާ ސެޝަނެއް"], ...sess.map(s => [s.id, sessionLabel(s)])], "");
+  const sesById = Object.fromEntries(sess.map(s => [s.id, s]));
+  const today = todayISO();
+  const dates = [...new Set(sess.map(s => s.date).filter(Boolean))].sort();
+
+  // ---- filters (all combine)
+  const fDate = select([["", "ހުރިހާ ދުވަހެއް"], ...dates.map(d => [d, `${dayDv(d)} ${d}${d === today ? " (މިއަދު)" : ""}`])], "");
+  const fSes = select([["", "ހުރިހާ ސެޝަނެއް"]], "");
+  const fillSes = () => {
+    const keep = fSes.value;
+    const list = sess.filter(s => !fDate.value || s.date === fDate.value).sort((a, b) => String(a.date + a.time).localeCompare(String(b.date + b.time)));
+    fSes.innerHTML = "";
+    fSes.appendChild(h("option", { value: "" }, fDate.value ? `ހުރިހާ ސެޝަނެއް (${list.length})` : "ހުރިހާ ސެޝަނެއް"));
+    fSes.appendChild(h("option", { value: "__none" }, "ސެޝަނަކަށް ނުލާ ދަރިވަރުން"));
+    list.forEach(s => fSes.appendChild(h("option", { value: s.id }, `${s.time || ""} • ${s.name}${s.venue ? " • " + s.venue : ""}${fDate.value ? "" : " • " + s.date}`)));
+    fSes.value = [...fSes.options].some(o => o.value === keep) ? keep : "";
+  };
+  fillSes();
   const fCat = select([["", "ހުރިހާ ބައެއް"], ...cats.map(c => [c.id, c.name])], "");
-  const fGen = select([["", "ދެ ޖިންސު"], ...GENDERS], "");
-  const fInst = select([["", "ހުރިހާ މުއައްސަސާ"], ...INST_TYPES], "");
-  const fCk = select([["", "ޗެކްއިން: ހުރިހާ"], ["in", "ޗެކްއިން ވެއްޖެ"], ["out", "ޗެކްއިން ނުވާ"]], "");
   const fBr = select(BRANCH_OPTS, "");
   const agesP = [...new Set(studs.map(x => x.ageGroup).filter(Boolean))];
   const fAge = select([["", "ހުރިހާ ޢުމުރުފުރާ"], ...AGE_GROUPS.filter(a => agesP.includes(a[0]))], "");
+  const fGen = select([["", "ދެ ޖިންސު"], ...GENDERS], "");
+  const fInst = select([["", "ހުރިހާ ވައްތަރެއް"], ...INST_TYPES], "");
   const fInstName = select([["", "ހުރިހާ މުއައްސަސާއެއް"], ...[...new Set(studs.map(x => String(x.institution || "").trim()).filter(Boolean))].sort().map(i => [i, i])], "");
+  const fCk = select([["", "ހުރިހާ"], ["in", "ހާޟިރުވި"], ["out", "ނާދޭ"]], "");
   const sigN = select([["3", "3 ސޮއި"], ["5", "5 ސޮއި"], ["7", "7 ސޮއި"]], "3");
-  const pick = () => studs.filter(s => (!fSes.value || s.sessionId === fSes.value) && (!fCat.value || s.categoryId === fCat.value) &&
-    (!fGen.value || s.gender === fGen.value) && (!fInst.value || s.instType === fInst.value) && (!fCk.value || (fCk.value === "in" ? !!s.checkin : !s.checkin)) &&
-    studMatch(s, { branch: fBr.value, age: fAge.value, institution: fInstName.value }))
-    .sort((a, b) => fSes.value ? (a.order || 0) - (b.order || 0) : String(a.regNo).localeCompare(String(b.regNo)));
-  const sub = () => [fSes.value && sessionLabel(sess.find(s => s.id === fSes.value)), fCat.value && catById(fCat.value).name, fGen.value && genderName(fGen.value),
-    fInst.value && instTypeName(fInst.value), fBr.value && BRANCH_OPTS.find(b => b[0] === fBr.value)[1], fAge.value && ageGroupName(fAge.value), fInstName.value].filter(Boolean).join(" • ");
-  const sesById = Object.fromEntries(sess.map(s => [s.id, s]));
-  const btn = (t, fn) => h("button.btn.lg", { onclick: () => { const rows = pick(); if (!rows.length) return toast("ލިސްޓުގައި ދަރިވަރަކު ނެތް", "warn"); fn(rows); } }, t);
+  const count = h("div.print-count");
+
+  const byReg = (a, b) => String(a.regNo).localeCompare(String(b.regNo));
+  const pick = () => studs.filter(s => {
+    const se = sesById[s.sessionId];
+    if (fDate.value && !(se && se.date === fDate.value)) return false;
+    if (fSes.value === "__none") { if (s.sessionId && se) return false; }
+    else if (fSes.value && s.sessionId !== fSes.value) return false;
+    return (!fCat.value || s.categoryId === fCat.value) && (!fGen.value || s.gender === fGen.value) && (!fInst.value || s.instType === fInst.value) &&
+      (!fCk.value || (fCk.value === "in" ? !!s.checkin : !s.checkin)) && studMatch(s, { branch: fBr.value, age: fAge.value, institution: fInstName.value });
+  });
+  // every session its own section, in the session's own order (the same numbers as the screens)
+  const groupsOf = (rows) => {
+    const g = {}; rows.forEach(r => { const k = sesById[r.sessionId] ? r.sessionId : ""; (g[k] = g[k] || []).push(r); });
+    return Object.entries(g).map(([sid, list]) => ({ s: sesById[sid] || null, list: sid ? list.sort((a, b) => (a.order || 0) - (b.order || 0)) : list.sort(byReg) }))
+      .sort((a, b) => !a.s ? 1 : !b.s ? -1 : String(a.s.date + a.s.time).localeCompare(String(b.s.date + b.s.time)));
+  };
+  const sub = () => [fDate.value && `${dayDv(fDate.value)} ${fDate.value}`, fSes.value === "__none" ? "ސެޝަނަކަށް ނުލާ" : fSes.value && sesById[fSes.value] && sesById[fSes.value].name,
+    fCat.value && (catById(fCat.value) || {}).name, fBr.value && BRANCH_OPTS.find(b => b[0] === fBr.value)[1], fAge.value && ageGroupName(fAge.value),
+    fGen.value && genderName(fGen.value), fInst.value && instTypeName(fInst.value), fInstName.value, fCk.value && (fCk.value === "in" ? "ހާޟިރުވި" : "ނާދޭ")]
+    .filter(Boolean).join(" • ");
+  const refresh = () => { const rows = pick(), gs = groupsOf(rows);
+    count.innerHTML = ""; count.append(h("b", rows.length), " ދަރިވަރުން • ", h("b", gs.filter(x => x.s).length), " ސެޝަން", gs.some(x => !x.s) ? " • ސެޝަނަށް ނުލާ ދަރިވަރުން ހިމެނޭ" : ""); };
+  fDate.onchange = () => { fillSes(); refresh(); };
+  [fSes, fCat, fBr, fAge, fGen, fInst, fInstName, fCk].forEach(x => x.onchange = refresh);
+  const PB = `<div style="page-break-after:always"></div>`;
+  const run = (title, build, opts = {}) => {
+    const rows = pick();
+    if (!rows.length) return toast("ލިސްޓުގައި ދަރިވަރަކު ނެތް", "warn");
+    const html = opts.flat ? build(rows.sort((a, b) => String((sesById[a.sessionId] || {}).date || "z").localeCompare(String((sesById[b.sessionId] || {}).date || "z")) || (a.order || 0) - (b.order || 0) || byReg(a, b)), null)
+      : groupsOf(rows).map(({ s, list }) => sessHeadHTML(s) + build(list.map((r, i) => ({ ...r, order: s ? r.order || i + 1 : i + 1 })), s)).join(PB);
+    printDoc(title, SESS_CSS + html, { sub: sub(), landscape: !!opts.landscape });
+  };
   const signers = () => Array.from({ length: +sigN.value }, (_, i) => i === 0 ? "ޗީފް ޖަޖު" : "ޖަޖު " + i);
-  view.append(h("div.card", h("h2", "ލިސްޓާއި ޕްރިންޓް — ފިލްޓަރ ކޮށްގެން"),
-    h("div.filters", fSes, fCat, fBr, fAge, fGen, fInst, fInstName, fCk, sigN),
+  const byCatBuild = (list, fn) => { const bc = {}; list.forEach(r => (bc[r.categoryId] = bc[r.categoryId] || []).push(r)); return Object.entries(bc).map(([cid, l]) => fn(l, catById(cid))).join(""); };
+  const B = (t, fn) => h("button.btn.lg", { onclick: fn }, t);
+  const lab = (t, el) => h("label.field", h("span", t), el);
+
+  view.append(h("div.card", h("div.row.between", h("h2", { style: { margin: 0 } }, "ލިސްޓާއި ޕްރިންޓް — ފިލްޓަރ ކޮށްގެން"),
+      h("button.btn.sm", { onclick: () => { [fDate, fCat, fBr, fAge, fGen, fInst, fInstName, fCk].forEach(x => x.value = ""); fillSes(); refresh(); } }, "✖ ފިލްޓަރު ފޮހެލާ")),
+    h("div.print-filters",
+      lab("📅 ދުވަސް / ތާރީޚް", fDate), lab("ސެޝަން", fSes), lab("ބައި", fCat), lab("ގޮފި", fBr), lab("ޢުމުރުފުރާ", fAge),
+      lab("ޖިންސު", fGen), lab("މުއައްސަސާގެ ވައްތަރު", fInst), lab("މުއައްސަސާ", fInstName), lab("ހާޟިރީ", fCk), lab("ސޮއި ލައިން", sigN)),
+    count,
+    h("p.small.muted", "ކޮންމެ ސެޝަނެއް ވަކި ޞަފުޙާއަކުން، ސެޝަނުގެ ދުވަސް، ގަޑި، ތަނާއި ޖަޖުންނާއެކު، ސެޝަނުގެ ތަރުތީބު ނަންބަރުން ޕްރިންޓްވާނެ — ސްކްރީނުގެ ލިސްޓާ ހަމަ އެއްގޮތަށް."),
     h("div.grid3",
-      btn("📋 ސެޝަން ލިސްޓު", rows => printDoc("ސެޝަން ލިސްޓު", tableHTML([
-        { t: "#", cls: "num", v: (r, i) => r.order || i + 1 },
-        { t: "ފޮޓޯ", cls: "num", html: r => r.photoThumb ? `<img class="ph" src="${r.photoThumb}">` : "" },
-        { t: "ނަން", v: r => r.name }, { t: "ރެޖި", v: r => r.regNo }, { t: "ID", v: r => r.nid },
-        { t: "ޢުމުރުފުރާ", v: r => ageGroupName(r.ageGroup) }, { t: "ބައި / ގޮފި", v: r => r.categoryName }, { t: "މުއައްސަސާ", v: r => r.institution }], rows), { sub: sub(), landscape: true })),
-      btn("✍ ޙާޟިރީ ޝީޓް", rows => printDoc("ޙާޟިރީ ޝީޓް", tableHTML([
-        { t: "#", cls: "num", v: (r, i) => r.order || i + 1 },
-        { t: "ފޮޓޯ", cls: "num", html: r => r.photoThumb ? `<img class="ph" src="${r.photoThumb}">` : "" },
-        { t: "ނަން", v: r => r.name }, { t: "އައިޑީ", v: r => r.nid }, { t: "ރެޖި", v: r => r.regNo },
-        { t: "ފޯނު", v: r => r.phone }, { t: "ޙާޟިރު", v: () => "" },
-        { t: "ސޮއި", html: () => "<div style='width:90px;height:22px'></div>" }], rows)
-        + sigBlock(["ސެކްރެޓަރީ", "ސުޕަވައިޒަރ"]), { sub: sub() })),
-      btn("📌 ނޯޓިސް ބޯޑު", async rows => {
-        printDoc("ނޯޓިސް ބޯޑު", noticeBoardHTML(rows, sesById), { landscape: true, sub: sub() });
-      }),
-      btn("🪪 ދަރިވަރު ކާޑު", rows => printDoc("ދަރިވަރު ކާޑު", admitCardsHTML(rows, sesById))),
-      btn("📝 ޖަޖުގެ ޝީޓް (A5)", rows => {
-        const s = sesById[fSes.value];
-        const judges = s && s.judges ? s.judges : [];
-        const byCat = {};
-        rows.forEach(r => (byCat[r.categoryId] = byCat[r.categoryId] || []).push(r));
-        const html = judges.length
-          ? judges.map(j => Object.entries(byCat).map(([cid, list]) => a5JudgeSheetHTML(list, catById(cid), s, [j])).join("")).join("")
-          : Object.entries(byCat).map(([cid, list]) => a5JudgeSheetHTML(list, catById(cid), s)).join("");
-        printDoc("ޖަޖުގެ މާކްސް ޝީޓް", html, { noHeader: false, sub: sub() + (s ? " • " + s.name : "") });
-      }),
-      btn("📑 ޖަޖުގެ ސެޝަން ޖަދުވަލު", rows => {
-        const s = sesById[fSes.value]; const cat = catById(fCat.value || (rows[0] && rows[0].categoryId));
-        const judges = s && s.judges ? s.judges : [{ slot: "1" }];
-        const html = judges.map(j => sessionJudgeTableHTML(rows, cat, s, j.slot)).join("<div style='page-break-after:always'></div>");
-        printDoc("ޖަޖުގެ ސެޝަން ޖަދުވަލު", html, { landscape: true, sub: sub() + (s ? " • " + s.name : "") });
+      B("📋 ސެޝަން ލިސްޓު", () => run("ސެޝަން ލިސްޓު", (list) => tableHTML([
+        { t: "#", cls: "num", v: r => r.order }, { t: "ފޮޓޯ", cls: "num", html: r => r.photoThumb ? `<img class="ph" src="${r.photoThumb}">` : "" },
+        { t: "ނަން", v: r => r.name }, { t: "ރެޖި", v: r => r.regNo }, { t: "އައިޑީ", v: r => r.nid }, { t: "ޢުމުރުފުރާ", v: r => ageGroupName(r.ageGroup) },
+        { t: "ބައި / ގޮފި", v: r => r.categoryName }, { t: "މުއައްސަސާ", v: r => r.institution }], list), { landscape: true })),
+      B("✍ ޙާޟިރީ ޝީޓް", () => run("ޙާޟިރީ ޝީޓް", (list) => tableHTML([
+        { t: "#", cls: "num", v: r => r.order }, { t: "ފޮޓޯ", cls: "num", html: r => r.photoThumb ? `<img class="ph" src="${r.photoThumb}">` : "" },
+        { t: "ނަން", v: r => r.name }, { t: "އައިޑީ", v: r => r.nid }, { t: "ރެޖި", v: r => r.regNo }, { t: "ފޯނު", v: r => r.phone },
+        { t: "ހާޟިރު ✔", html: () => "<div style='width:40px;height:22px'></div>" }, { t: "ގަޑި", html: () => "<div style='width:50px'></div>" },
+        { t: "ސޮއި", html: () => "<div style='width:90px;height:22px'></div>" }], list) + sigBlock(["ހާޟިރީ ބެލި މުވައްޒަފު", "ޗީފް ޖަޖު"]))),
+      B("📌 ނޯޓިސް ބޯޑު", () => run("ނޯޓިސް ބޯޑު", (list, s) => tableHTML([
+        { t: "#", cls: "num", v: r => r.order }, { t: "ނަން", v: r => r.name }, { t: "ރެޖި", v: r => r.regNo }, { t: "ބައި", v: r => r.categoryName },
+        { t: "ޢުމުރުފުރާ", v: r => ageGroupName(r.ageGroup) }, { t: "މުއައްސަސާ", v: r => r.institution || "" }], list) + (s && s.publicNote ? `<p class="box">📌 ${esc(s.publicNote)}</p>` : ""), { landscape: true })),
+      B("🪪 ދަރިވަރު ކާޑު", () => run("ދަރިވަރު ކާޑު", (list) => admitCardsHTML(list, sesById), { flat: true })),
+      B("📝 ޖަޖުގެ ޝީޓް (A5)", () => run("ޖަޖުގެ މާކްސް ޝީޓް", (list, s) => {
+        const judges = s && (s.judges || []).length ? s.judges : [{ slot: "", name: "" }];
+        return judges.map(j => byCatBuild(list, (l, cat) => a5JudgeSheetHTML(l, cat, s, [j]))).join("");
       })),
-    h("p.small.muted", "ނަތީޖާގެ ޝީޓްތައް (ވަނަތައް، ޖަލްސާގެ ޕްރިންޓް، ރުބްރިކް ރިޕޯޓް) ޕްރިންޓްކުރެވޭނީ 'ނަތީޖާ' ޓެބުން."),
-    h("div.row", h("span.small.muted", "ސޮއި ލައިން: "), h("span.small", signers().join("، ")))));
-  sigN.onchange = () => view.querySelector(".row:last-child span.small:last-child").textContent = signers().join("، ");
+      B("📑 ޖަޖުގެ ސެޝަން ޖަދުވަލު", () => run("ޖަޖުގެ ސެޝަން ޖަދުވަލު", (list, s) => {
+        const judges = s && (s.judges || []).length ? s.judges : [{ slot: "1", name: "" }];
+        return judges.map(j => byCatBuild(list, (l, cat) => sessionJudgeTableHTML(l, cat, s, j.slot + (j.name ? " — " + j.name : "")) + sigBlock(signers()))).join(PB);
+      }, { landscape: true }))),
+    h("p.small.muted", "ނަތީޖާގެ ޝީޓްތައް (ވަނަތައް، ޖަލްސާގެ ޕްރިންޓް، ރުބްރިކް ރިޕޯޓް) ޕްރިންޓްކުރެވޭނީ 'ނަތީޖާ' ޓެބުން.")));
+  // default: today's sessions if there are any
+  if (dates.includes(today)) { fDate.value = today; fillSes(); }
+  refresh();
 }
