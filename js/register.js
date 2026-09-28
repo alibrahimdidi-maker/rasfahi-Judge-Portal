@@ -19,6 +19,7 @@ const AGE_GROUPS = { A5_6: "5 އަހަރާއި 6 އަހަރާ ދެމެދު", U7:
   U11: "11 އަހަރުން ދަށް", U12: "12 އަހަރުން ދަށް", U13: "13 އަހަރުން ދަށް", U14: "14 އަހަރުން ދަށް", U15: "15 އަހަރުން ދަށް", U16: "16 އަހަރުން ދަށް",
   U17: "17 އަހަރުން ދަށް", U18: "18 އަހަރުން ދަށް", A18_21: "18 އަހަރާއި 21 އަހަރާ ދެމެދު", O21: "21 އަހަރުން މަތި", O50: "ދޮށީ ޢުމުރުގެ މީހުން (50 އަހަރުން މަތި)",
   SN: "ނުކުޅެދުންތެރިކަން ހުންނަ", U6: "6 އަހަރުން ދަށް", U19: "19 އަހަރުން ދަށް", U21: "21 އަހަރުން ދަށް", GEN: "ޢާއްމު ބައި" };
+const AGE_ORDER = ["A5_6", "U6", "U7", "U8", "U9", "U10", "U11", "U12", "U13", "U14", "U15", "U16", "U17", "U18", "U19", "A18_21", "U21", "O21", "GEN", "O50", "SN"];
 const AGE_LIMITS = { A5_6: [5, 7], U6: [0, 6], U7: [0, 7], U8: [0, 8], U9: [0, 9], U10: [0, 10], U11: [0, 11], U12: [0, 12], U13: [0, 13], U14: [0, 14],
   U15: [0, 15], U16: [0, 16], U17: [0, 17], U18: [0, 18], U19: [0, 19], U21: [0, 21], A18_21: [18, 22], O21: [21, 200], O50: [50, 200] };
 const INST = [["School", "ސްކޫލް"], ["University", "ޔުނިވަރސިޓީ / ކޮލެޖް"], ["QuranClass", "ޤުރްއާން ކްލާސް"], ["Club", "ކްލަބް / ޖަމްޢިއްޔާ"], ["Office", "އޮފީސް"], ["Private", "އަމިއްލަ ގޮތުން"]];
@@ -172,7 +173,15 @@ function form(a, isFix = false) {
     </div>
     <h3>މުބާރާތުގެ ބައި</h3>
     <div class="grid3">
-      <label class="field"><span class="req">ބައި</span><select id="fCat"><option value="">— ހޮއްވަވާ —</option>${cats.map(c => `<option value="${esc(c.id)}" data-g="${esc(c.gender)}" ${a.categoryId === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+      <label class="field"><span class="req">ގޮފި</span><select id="fBranch"><option value="">— ހޮއްވަވާ —</option>
+        ${[...new Set(cats.map(c => c.branch))].filter(Boolean).map(b => `<option value="${b}">${b === "hifz" ? "ނުބަލައި" : "ބަލައިގެން"}</option>`).join("")}</select></label>
+      <label class="field"><span>ޢުމުރު (ޑެޑްލައިނަށް)</span><div id="fAgeShow" class="age-show">—</div></label>
+      <label class="field"><span class="req">ބައިވެރިވާ ޢުމުރުފުރާ</span><select id="fAgeGroup"><option value="">— ހޮއްވަވާ —</option>
+        ${AGE_ORDER.filter(k => cats.some(c => c.ageGroup === k)).map(k => `<option value="${k}">${esc(AGE_GROUPS[k] || k)}</option>`).join("")}</select></label>
+    </div>
+    <div id="ageFit" class="age-fit"></div>
+    <div class="grid3">
+      <label class="field"><span class="req">ބައި</span><select id="fCat"><option value="">— ހޮއްވަވާ —</option>${cats.map(c => `<option value="${esc(c.id)}" data-g="${esc(c.gender)}" data-b="${esc(c.branch)}" data-a="${esc(c.ageGroup)}" ${a.categoryId === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
       <label class="field"><span class="req">މުއައްސަސާ / ސްކޫލް</span><input id="fInst" value="${v("institution")}"></label>
       <label class="field"><span>މުއައްސަސާގެ ވައްތަރު</span><select id="fInstType"><option value="">—</option>${INST.map(([k, t]) => `<option value="${k}" ${a.instType === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>
     </div>
@@ -203,20 +212,61 @@ function form(a, isFix = false) {
     if (!f.type.startsWith("image/")) return toast("ފޮޓޯއެއް ހޮއްވަވާ", true);
     const v = await resize(f, 1000, 0.62); set(v); $(prev).innerHTML = `<img src="${v}">`; }; };
   idPic("fIdF", "idFPrev", v => idFront = v); idPic("fIdB", "idBPrev", v => idBack = v);
-  // age on the competition's age date, and whether it fits the chosen category
-  const hint = () => {
-    const d = $("fDob").value; if (!d) { $("ageHint").textContent = ""; return; }
-    const age = ageOn(d, REG.ageOnDate);
-    const cat = (REG.categories || []).find(c => c.id === $("fCat").value);
-    const lim = cat && AGE_LIMITS[cat.ageGroup];
-    const ok = !lim || (age >= lim[0] && age < lim[1]);
-    $("ageHint").innerHTML = `ޢުމުރު (${esc(REG.ageOnDate || "މިއަދު")}): <b>${age}</b> އަހަރު` +
-      (cat ? (ok ? ` <span class="tag green">✔ ${esc(AGE_GROUPS[cat.ageGroup] || "")}</span>` : ` <span class="tag red">⚠ މި ބައިގެ ޢުމުރުފުރާއާ ދިމާއެއް ނުވޭ (${esc(AGE_GROUPS[cat.ageGroup] || "")})</span>`) : "");
+  // ---- age on the competition's deadline (age date), whether it fits the chosen age group, and the right group if not
+  const ageDate = REG.ageOnDate || REG.deadline || "";
+  const ageDateTxt = ageDate ? ageDate : "މިއަދު";
+  const fits = (age, ag) => { const lim = AGE_LIMITS[ag]; return !lim || (age >= lim[0] && age < lim[1]); };
+  const groupsHere = AGE_ORDER.filter(k => cats.some(c => c.ageGroup === k) && k !== "SN");
+  // the most fitting group = the youngest group the student still fits in (e.g. age 8 → "9 އަހަރުން ދަށް" rather than "13 އަހަރުން ދަށް")
+  const bestGroup = (age) => groupsHere.filter(k => fits(age, k)).sort((x, y) => (AGE_LIMITS[x] || [0, 999])[1] - (AGE_LIMITS[y] || [0, 999])[1])[0] || "";
+  let ageNow = null;
+  const filterCats = () => {
+    const g = $("fGender").value, b = $("fBranch").value, ag = $("fAgeGroup").value;
+    const sel = $("fCat");
+    const shown = [...sel.options].filter(o => o.value).map(o => {
+      o.hidden = !!((o.dataset.g && g && o.dataset.g !== g) || (b && o.dataset.b !== b) || (ag && o.dataset.a !== ag));
+      return o;
+    }).filter(o => !o.hidden);
+    if (sel.value && sel.selectedOptions[0] && sel.selectedOptions[0].hidden) sel.value = "";
+    if (!sel.value && shown.length === 1) sel.value = shown[0].value;          // only one category matches → choose it
   };
-  $("fDob").oninput = hint; hint();
-  const filterCats = () => { const g = $("fGender").value; [...$("fCat").options].forEach(o => { if (o.value) o.hidden = !!(o.dataset.g && g && o.dataset.g !== g); }); };
-  $("fGender").onchange = filterCats; filterCats();
-  $("fCat").addEventListener("change", hint);
+  const check = () => {
+    const d = $("fDob").value;
+    ageNow = d ? ageOn(d, ageDate || undefined) : null;
+    $("fAgeShow").innerHTML = ageNow == null ? "—" : `<b>${ageNow}</b> އަހަރު <small>(${esc(ageDateTxt)} ގެ ނިޔަލަށް)</small>`;
+    $("ageHint").innerHTML = ageNow == null ? "" : `ޢުމުރު ބަލަނީ މުބާރާތުގެ ޑެޑްލައިން <b>${esc(ageDateTxt)}</b> އަށް: <b>${ageNow}</b> އަހަރު`;
+    const box = $("ageFit");
+    if (ageNow == null) { box.innerHTML = ""; return; }
+    const best = bestGroup(ageNow);
+    if (!$("fAgeGroup").value && best) { $("fAgeGroup").value = best; filterCats(); }
+    const ag = $("fAgeGroup").value;
+    if (!ag) { box.innerHTML = best ? "" : `<div class="fit bad">⚠ ${ageNow} އަހަރުގެ ދަރިވަރުންނަށް މި މުބާރާތުގައި ޢުމުރުފުރާއެއް ނެތް.</div>`; return; }
+    if (fits(ageNow, ag)) {
+      box.innerHTML = `<div class="fit ok">✔ ޑެޑްލައިނަށް ${ageNow} އަހަރު — <b>${esc(AGE_GROUPS[ag] || ag)}</b> އަށް ފެތޭ` +
+        (best && best !== ag ? ` <span class="fit-near">• އެންމެ ގާތް ޢުމުރުފުރާ: <b>${esc(AGE_GROUPS[best])}</b> <button type="button" class="btn sm" id="nearAge">އެއަށް ބަދަލުކުރޭ</button></span>` : "") + `</div>`;
+      const nb = document.getElementById("nearAge");
+      if (nb) nb.onclick = () => { $("fAgeGroup").value = best; filterCats(); check(); };
+    }
+    else {
+      box.innerHTML = `<div class="fit bad">✖ ${ageNow} އަހަރުގެ ދަރިވަރަކަށް <b>${esc(AGE_GROUPS[ag] || ag)}</b> އަށް ނުފެތޭ.` +
+        (best ? ` ފެތެނީ: <b>${esc(AGE_GROUPS[best])}</b> <button type="button" class="btn sm primary" id="fixAge">މިއަށް ބަދަލުކުރޭ</button>` : " މި މުބާރާތުގައި ފެތޭ ޢުމުރުފުރާއެއް ނެތް.") + `</div>`;
+      const fx = document.getElementById("fixAge");
+      if (fx) fx.onclick = () => { $("fAgeGroup").value = best; filterCats(); check(); };
+    }
+  };
+  // choosing a category also sets its branch and age group
+  $("fCat").addEventListener("change", () => {
+    const o = $("fCat").selectedOptions[0];
+    if (o && o.value) { $("fBranch").value = o.dataset.b || ""; $("fAgeGroup").value = o.dataset.a || ""; }
+    filterCats(); check();
+  });
+  $("fBranch").onchange = () => { filterCats(); check(); };
+  $("fAgeGroup").onchange = () => { filterCats(); check(); };
+  $("fGender").onchange = () => { filterCats(); check(); };
+  $("fDob").oninput = check; $("fDob").onchange = check;
+  // an existing application: show its branch / age group
+  { const o = $("fCat").selectedOptions[0]; if (o && o.value) { $("fBranch").value = o.dataset.b || ""; $("fAgeGroup").value = o.dataset.a || ""; } }
+  filterCats(); check();
   $("fSubmit").onclick = async () => {
     const d = {
       name: $("fName").value.trim().replace(/\s+/g, " "), nameEn: $("fNameEn").value.trim(), nid: $("fNid").value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""),
@@ -230,7 +280,11 @@ function form(a, isFix = false) {
     if (!d.gender) miss.push("ޖިންސު"); if (!d.permAddress) miss.push("ދާއިމީ އެޑްރެސް"); if (!d.island) miss.push("ރަށް"); if (!d.categoryId) miss.push("ބައި");
     if (!d.institution) miss.push("މުއައްސަސާ"); if (!d.guardianName) miss.push("ބެލެނިވެރިޔާ"); if (d.guardianPhone.length < 7) miss.push("ބެލެނިވެރިޔާގެ ފޯނު");
     if (!d.declaration) miss.push("އިޤްރާރު");
+    if (!$("fBranch").value) miss.push("ގޮފި"); if (!$("fAgeGroup").value) miss.push("ޢުމުރުފުރާ");
     if (miss.length) return toast("ފުރިހަމަ ނުވާ: " + miss.join("، "), true);
+    { const catO = $("fCat").selectedOptions[0]; const ag = catO && catO.dataset.a;
+      if (ageNow != null && ag && !fits(ageNow, ag)) { check(); $("ageFit").scrollIntoView({ behavior: "smooth", block: "center" });
+        return toast(`ޑެޑްލައިނަށް ${ageNow} އަހަރު — ހޮވި ޢުމުރުފުރާއަށް ނުފެތޭ. ފެތޭ ޢުމުރުފުރާއަށް ބަދަލުކުރައްވާ.`, true); } }
     if (!/^A\d{6}$/.test(d.nid) && !confirm("އައިޑީ ނަންބަރު (A123456) ގޮތަކަށް ނޫން. ކުރިއަށް ދާންތޯ؟")) return;
     $("fSubmit").disabled = true;
     try {
