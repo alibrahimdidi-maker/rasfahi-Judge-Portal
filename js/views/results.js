@@ -94,7 +94,7 @@ export async function results(view) {
     let lastCat = null;
     const tb = h("tbody");
     list.forEach(r => {
-      if (r.categoryId !== lastCat) { lastCat = r.categoryId; tb.appendChild(h("tr", h("td", { colspan: 10, style: { background: "var(--th)", color: "var(--gold2)", fontWeight: 700, padding: "8px" } }, r.categoryName))); }
+      if (r.categoryId !== lastCat) { lastCat = r.categoryId; tb.appendChild(h("tr", h("td", { colspan: 11, style: { background: "var(--th)", color: "var(--gold2)", fontWeight: 700, padding: "8px" } }, r.categoryName))); }
       const rankBg = r.rank===1?"rgba(212,175,55,.18)":r.rank===2?"rgba(180,180,180,.10)":r.rank===3?"rgba(200,140,80,.12)":"";
       tb.appendChild(h("tr", { style: { background: rankBg } },
         h("td", h("b", { style: { fontSize: r.rank<=3?"18px":"" } }, r.rank<=3?"🥇🥈🥉"[r.rank-1]+" "+r.rank:String(r.rank))),
@@ -105,9 +105,10 @@ export async function results(view) {
         h("td.small", (r.judges || []).map(j => fmt2(j.total)).join(" | ")),
         h("td", h("b", { style: { color: "var(--green2)", fontSize: "16px" } }, fmt2(r.final))),
         h("td", { html: starsHtml(r.stars) }),
-        h("td", r.institution ? h("div.small.muted", r.institution) : "")));
+        h("td", r.institution ? h("div.small.muted", r.institution) : ""),
+        h("td", h("button.btn.sm", { onclick: async () => { const m = await import("./report.js"); m.openStudentReport(r.id); } }, "📋 ރިޕޯޓް"))));
     });
-    box.appendChild(h("div.tbl-wrap", h("table.tbl", h("thead", h("tr", ["ވަނަ", "", "ނަން", "ރެޖި", "އައިޑީ", "ސެޝަން", "ޖަޖުން", "ފައިނަލް", "ތަރި", "މުއައްސަސާ"].map(x => h("th", x)))), tb)));
+    box.appendChild(h("div.tbl-wrap", h("table.tbl", h("thead", h("tr", ["ވަނަ", "", "ނަން", "ރެޖި", "އައިޑީ", "ސެޝަން", "ޖަޖުން", "ފައިނަލް", "ތަރި", "މުއައްސަސާ", ""].map(x => h("th", x)))), tb)));
   }
   [fCat, fSes, fGen, fTop, fStar].forEach(x => x.onchange = draw);
   const sub2 = () => [fCat.value && (catById(fCat.value) || {}).name, fSes.value && sessionLabel(sessions.find(s => s.id === fSes.value)), fGen.value && genderName(fGen.value)].filter(Boolean).join(" • ");
