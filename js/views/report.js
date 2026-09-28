@@ -7,7 +7,7 @@
 // ============================================================
 import {
   S, db, collection, getDocs, query, where, h, esc, toast, modal, select, spinner, empty,
-  loadCategories, catById, fmt2, round, starsHtml, AGE_GROUPS, ageGroupName, genderName, BRANCHES
+  loadCategories, catById, fmt2, round, starsHtml, AGE_GROUPS, LEGACY_AGE_GROUPS, ageGroupName, genderName, BRANCHES, instTypeName
 } from "../core.js";
 import { KHAFI_GROUPS, JALI_TYPES } from "../tajweed.js";
 import { printDoc } from "../print.js";
@@ -15,10 +15,10 @@ import { printDoc } from "../print.js";
 // ---------- palette & helpers ----------
 const COL = { gold: "#c9a443", emerald: "#1c8a5c", purple: "#6a4bc4", lapis: "#3d6fe0", ruby: "#c0392b", teal: "#13a3a8", orange: "#e67e22", rose: "#d45d91", slate: "#7f8fa6" };
 const SERIES = [COL.emerald, COL.purple, COL.gold, COL.lapis, COL.ruby, COL.teal, COL.orange, COL.rose, COL.slate];
-const AGE_ORDER = AGE_GROUPS.map(a => a[0]);
-const JUNIOR = new Set(["U6", "U9", "U11", "U13"]);
+const AGE_ORDER = ["A5_6", "U6", "U7", "U8", "U9", "U10", "U11", "U12", "U13", "U14", "U15", "U16", "U17", "U18", "U19", "A18_21", "U21", "O21", "GEN", "O50", "SN"];
+const JUNIOR = new Set(["A5_6", "U6", "U7", "U8", "U9", "U10", "U11", "U12", "U13"]);
 const levelOf = (ag) => (ag === "SN" ? "sn" : JUNIOR.has(ag) ? "junior" : "senior");
-const LEVEL_DV = { junior: "ޖޫނިއަރ (13 އަހަރުން ދަށް)", senior: "ސީނިއަރ (16 އަހަރުން މަތި)", sn: "ނުކުޅެދުންތެރިކަން ހުންނަ" };
+const LEVEL_DV = { junior: "ޖޫނިއަރ (13 އަހަރުން ދަށް)", senior: "ސީނިއަރ (14 އަހަރުން މަތި)", sn: "ނުކުޅެދުންތެރިކަން ހުންނަ" };
 const PASSAGE_DV = { juz30: "ޢައްމަ ކޮޅު (ފޮތް 30)", baqarah: "ބަޤަރާ ސޫރަތް", other: "އެހެން ތަންތަނުން" };
 const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 const pct = (v, m) => (m ? (v / m) * 100 : 0);
@@ -71,6 +71,8 @@ async function loadData() {
   try { scores = (await getDocs(query(collection(db, "scores"), where("competitionId", "==", cid)))).docs.map(d => d.data()); }
   catch (e) { scoreErr = e.code || e.message; }
   const byStudent = groupBy(scores.filter(s => s.locked !== false), s => s.studentId);
+  let studs = {};
+  try { studs = Object.fromEntries((await getDocs(query(collection(db, "students"), where("competitionId", "==", cid)))).docs.map(d => [d.id, d.data()])); } catch (e) {}
   const rows = res.map(r => {
     const cat = catById(r.categoryId) || {};
     const sheets = byStudent[r.studentId] || [];
@@ -80,7 +82,8 @@ async function loadData() {
     const passage = qs.length && qs.every(q => +q.juz === 30) ? "juz30" : qs.some(q => +q.surah === 2) ? "baqarah" : qs.length ? "other" : "";
     const rub = r.rubric || cat.rubric || [];
     const max = rub.reduce((a, x) => a + (+x.max || 0), 0) || 100;
-    return { ...r, cat, branch: cat.branch || r.branch || "", ageGroup: r.ageGroup || cat.ageGroup || "", level: levelOf(r.ageGroup || cat.ageGroup),
+    const st = studs[r.studentId] || {};
+    return { ...r, cat, instType: r.instType || st.instType || "", institution: r.institution || st.institution || "", recording: st.recording || null, branch: cat.branch || r.branch || "", ageGroup: r.ageGroup || cat.ageGroup || "", level: levelOf(r.ageGroup || cat.ageGroup),
       gender: r.gender || "", passage, errs, nJ, max, pctFinal: pct(+r.final || 0, max),
       jali: errs.filter(e => e.type === "jali").length / nJ, khafi: errs.filter(e => e.type === "khafi").length / nJ, rub };
   });
@@ -112,6 +115,7 @@ export async function report(view) {
   const F = {
     branch: select([["", "ހުރިހާ ގޮފި"], ["mushaf", "ބަލައިގެން"], ["hifz", "ނުބަލައި"]], ""),
     age: select([["", "ހުރިހާ ޢުމުރުފުރާ"], ...ages.map(a => [a, ageGroupName(a)])], ""),
+    inst: select([["", "ހުރިހާ މުއައްސަސާ"], ...[...new Set(D.rows.map(r => String(r.institution || "").trim()).filter(Boolean))].sort().map(i => [i, i])], ""),
     level: select([["", "ޖޫނިއަރ / ސީނިއަރ"], ["junior", LEVEL_DV.junior], ["senior", LEVEL_DV.senior]], ""),
     gender: select([["", "ދެ ޖިންސު"], ["M", "ފިރިހެން"], ["F", "އަންހެން"]], ""),
     cat: select([["", "ހުރިހާ ބައެއް"], ...D.cats.map(c => [c.id, c.name])], ""),
@@ -129,11 +133,13 @@ export async function report(view) {
   Object.values(F).forEach(s => s.onchange = draw);
   if (D.scoreErr) toast("ޖަޖުންގެ ޝީޓްތައް ނުލިބުނު — ކުށުގެ ތަފާސް ހިސާބު ނުފެންނާނެ (" + D.scoreErr + ")", "warn", 8000);
 
-  let current = [];
+  let current = [], rankedAll = [];
   function filtered() {
     let rows = D.rows.filter(r => (!F.branch.value || r.branch === F.branch.value) && (!F.age.value || r.ageGroup === F.age.value) &&
-      (!F.level.value || r.level === F.level.value) && (!F.gender.value || r.gender === F.gender.value) && (!F.cat.value || r.categoryId === F.cat.value));
+      (!F.level.value || r.level === F.level.value) && (!F.gender.value || r.gender === F.gender.value) && (!F.cat.value || r.categoryId === F.cat.value) &&
+      (!F.inst.value || String(r.institution || "").trim() === F.inst.value));
     rows = withRanks(rows, F.scope.value);
+    rankedAll = rows;                                   // everyone in the filter, ranked (for winners vs others)
     if (F.top.value) rows = rows.filter(r => r.rank <= +F.top.value);
     return rows;
   }
@@ -158,6 +164,9 @@ export async function report(view) {
 
     // --- findings in words
     out.push(section("ފާހަގަވާ ކަންކަން", `<ul class="rep-find">${insights(rows).map(t => `<li>${t}</li>`).join("")}</ul>`));
+
+    // --- winners side by side (1st, 2nd, 3rd … up to the chosen rank)
+    out.push(winnersHTML(rows));
 
     // --- age groups × branch
     const agesHere = AGE_ORDER.filter(a => rows.some(r => r.ageGroup === a));
@@ -186,7 +195,7 @@ export async function report(view) {
       section("ޖޫނިއަރ / ސީނިއަރ", barsV([{ label: "މާކްސް %", values: [jn.n ? jn.avg : null, sn.n ? sn.avg : null] },
         { label: "ޖަލީ ×10", values: [jn.n ? jn.jali * 10 : null, sn.n ? sn.jali * 10 : null] }, { label: "ޚަފީ ×10", values: [jn.n ? jn.khafi * 10 : null, sn.n ? sn.khafi * 10 : null] }],
         [{ label: `ޖޫނިއަރ (${jn.n})`, color: COL.teal }, { label: `ސީނިއަރ (${sn.n})`, color: COL.gold }]),
-        "ޖޫނިއަރ = 13 އަހަރުން ދަށް • ސީނިއަރ = 16 އަހަރުން މަތި • ކުށުގެ ޢަދަދު ފެންނަނީ 10 ން ގުނައިގެން (ދަރިވަރަކަށް)") +
+        "ޖޫނިއަރ = 13 އަހަރުން ދަށް • ސީނިއަރ = 14 އަހަރުން މަތި • ކުށުގެ ޢަދަދު ފެންނަނީ 10 ން ގުނައިގެން (ދަރިވަރަކަށް)") +
       section("ޢައްމަ ކޮޅު / ބަޤަރާ ސޫރަތް", barsV([{ label: "މާކްސް %", values: [pj.n ? pj.avg : null, pb.n ? pb.avg : null, po.n ? po.avg : null] },
         { label: "ކުށް ×10", values: [pj.n ? (pj.jali + pj.khafi) * 10 : null, pb.n ? (pb.jali + pb.khafi) * 10 : null, po.n ? (po.jali + po.khafi) * 10 : null] }],
         [{ label: `${PASSAGE_DV.juz30} (${pj.n})`, color: COL.emerald }, { label: `${PASSAGE_DV.baqarah} (${pb.n})`, color: COL.ruby }, { label: `${PASSAGE_DV.other} (${po.n})`, color: COL.slate }]),
@@ -240,6 +249,45 @@ export async function report(view) {
         ${screen ? `<td><button class="btn sm" data-card="${esc(r.id)}">📋 ރިޕޯޓް</button></td>` : ""}</tr>`; }).join("")}</tbody></table></div>`,
       "ފިލްޓަރުތަކުން ޢުމުރުފުރާ، ގޮފި، ޖިންސު، ޖޫނިއަރ / ސީނިއަރ ހޮވުމުން އެ ދަރިވަރުން އަޅާކިޔޭނެ"));
     return out.join("");
+  }
+  // 1 ވަނަ، 2 ވަނަ، 3 ވަނަ ... — names, bars and pies in one place
+  function winnersHTML(rows) {
+    const N = +F.top.value || 3;
+    const pool = rankedAll.length ? rankedAll : rows;
+    const win = pool.filter(r => r.rank <= N);
+    if (!win.length) return "";
+    const scope = F.scope.value;
+    const gKey = { cat: r => r.categoryName || r.categoryId, age: r => ageGroupName(r.ageGroup), branch: r => BRANCHES[r.branch] || r.branch, all: () => "މުޅި މުބާރާތް" }[scope];
+    const groups = groupBy(win, gKey);
+    const names = Object.keys(groups).sort((a, b) => {
+      if (scope === "age") return AGE_ORDER.indexOf(groups[a][0].ageGroup) - AGE_ORDER.indexOf(groups[b][0].ageGroup);
+      return a.localeCompare(b);
+    });
+    const medal = (k) => (k <= 3 ? ["🥇", "🥈", "🥉"][k - 1] + " " : `${k}. `);
+    const RC = [COL.gold, "#b8c0cc", "#cd7f32", COL.lapis, COL.teal, COL.purple, COL.rose, COL.emerald, COL.orange, COL.slate];
+    const cards = names.map(g => `<div class="win-card"><h4>${esc(g)}</h4>${barsH(groups[g].sort((a, b) => a.rank - b.rank).map(r => ({
+      label: medal(r.rank) + r.name, sub: `${r.categoryName || ""} • ${genderName(r.gender)} • ${r.institution || ""}`, value: r.pctFinal, color: RC[(r.rank - 1) % RC.length] })),
+      { max: 100, dec: 1, fmt: v => fmt2(v, 1) + "%" })}</div>`).join("");
+    const byRank = Array.from({ length: N }, (_, i) => i + 1);
+    const chart = barsV(names.slice(0, 14).map(g => ({ label: g.length > 16 ? g.slice(0, 15) + "…" : g,
+      values: byRank.map(k => { const r = groups[g].find(x => x.rank === k); return r ? r.pctFinal : null; }) })),
+      byRank.map(k => ({ label: `${k} ވަނަ`, color: RC[(k - 1) % RC.length] })), { max: 100 });
+    const pies = `<div class="rep-grid3">
+      <div>${donut([{ label: "ފިރިހެން", value: win.filter(r => r.gender === "M").length, color: COL.lapis }, { label: "އަންހެން", value: win.filter(r => r.gender === "F").length, color: COL.rose }], { caption: "ޖިންސު" })}</div>
+      <div>${donut([{ label: "ބަލައިގެން", value: win.filter(r => r.branch === "mushaf").length, color: COL.emerald }, { label: "ނުބަލައި", value: win.filter(r => r.branch === "hifz").length, color: COL.purple }], { caption: "ގޮފި" })}</div>
+      <div>${donut(Object.entries(groupBy(win, r => r.instType || "?")).map(([k, v], i) => ({ label: k === "?" ? "—" : instTypeName(k), value: v.length, color: SERIES[i % SERIES.length] })), { caption: "މުއައްސަސާ" })}</div></div>`;
+    const others = pool.filter(r => r.rank > N);
+    const cmp = barsV([{ label: "މާކްސް %", values: [avg(win.map(r => r.pctFinal)), others.length ? avg(others.map(r => r.pctFinal)) : null] },
+      { label: "ޖަލީ ×10", values: [avg(win.map(r => r.jali)) * 10, others.length ? avg(others.map(r => r.jali)) * 10 : null] },
+      { label: "ޚަފީ ×10", values: [avg(win.map(r => r.khafi)) * 10, others.length ? avg(others.map(r => r.khafi)) * 10 : null] }],
+      [{ label: `ވަނަ ލިބުނު (${win.length})`, color: COL.gold }, { label: `އެހެން ދަރިވަރުން (${others.length})`, color: COL.slate }]);
+    const scopeDv = { cat: "ބައި", age: "ޢުމުރުފުރާ", branch: "ގޮފި", all: "މުޅި މުބާރާތް" }[scope];
+    return section(`🏆 ވަނަ ލިބުނު ދަރިވަރުންގެ އަޅާކިޔުން — ${scopeDv} • 1 ން ${N} ވަނައާ ހަމައަށް`,
+      `<div class="win-grid">${cards}</div>` +
+      `<div class="rep-grid2" style="margin-top:14px"><div><h4 class="win-sub">ވަނަތަކުގެ މާކްސް (%) — ${scopeDv}ން</h4>${chart}</div>
+        <div><h4 class="win-sub">ވަނަ ލިބުނު ދަރިވަރުން / އެހެން ދަރިވަރުން</h4>${cmp}</div></div>` +
+      `<h4 class="win-sub">ވަނަ ލިބުނު ދަރިވަރުން — ޖިންސު، ގޮފި، މުއައްސަސާ</h4>${pies}`,
+      "‘ވަނަ’ ފިލްޓަރުން 1، 3، 5، 10 ހޮއްވަވާ. ‘ވަނަ ހިސާބުކުރާ ދާއިރާ’ ބަދަލުކޮށް ޢުމުރުފުރާ، ގޮފި، ނުވަތަ މުޅި މުބާރާތުގެ ވަނަތައް ބައްލަވާ.");
   }
   const cnt2 = (errs) => { const g = groupBy(errs, errKey); let best = "", n = 0; for (const k in g) if (g[k].length > n) { n = g[k].length; best = k; } return best; };
 
@@ -299,7 +347,9 @@ export function studentCardHTML(r, all) {
 }
 export function studentCard(r, all) {
   const html = studentCardHTML(r, all);
-  modal("ދަރިވަރުގެ ރިޕޯޓް", h("div.rep", { html }),
+  const bodyEl = h("div.rep", { html });
+  if (r.recording && r.recording.url) import("../media.js").then(m => bodyEl.appendChild(h("section.rep-card", h("h3", "🎥 ކިޔެވުމުގެ ރެކޯޑިންގ"), m.mediaPlayer(r.recording))));
+  modal("ދަރިވަރުގެ ރިޕޯޓް", bodyEl,
     [{ label: "🖨 ޕްރިންޓް", cls: "primary", onClick: () => { printDoc("ދަރިވަރުގެ ރިޕޯޓް — " + r.name, `<style>${PRINT_CSS}</style><div class="rep print">${html}</div>`); return false; } },
      { label: "ބަންދު" }], { wide: true });
 }
@@ -333,4 +383,5 @@ const PRINT_CSS = `
 .rep-tbl td,.rep-tbl th{font-size:11px}.rk1 td{background:#fff7dd}.rk2 td{background:#f2f2f2}.rk3 td{background:#f8efe7}
 .rep-student .rs-head{display:flex;justify-content:space-between;align-items:center;border-bottom:3px double #c9a443;margin-bottom:10px;padding-bottom:6px}
 .rs-score{text-align:center}.rs-score b{display:block;font-size:30px;color:#1c8a5c}.rep-empty{color:#888;padding:10px;text-align:center}
+.win-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.win-card{border:1px solid #d9c27a;border-radius:8px;padding:6px 8px;page-break-inside:avoid}.win-card h4,.win-sub{margin:0 0 4px;color:#6b5210;text-align:center;font-size:12px}.rep-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .rep-head,.rep-filters,.btn{display:none}`;

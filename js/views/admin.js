@@ -4,7 +4,7 @@
 import {
   S, db, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where, serverTimestamp,
   h, esc, toast, modal, confirmBox, field, select, spinner, empty, ROLES, roleName, audit, fmtDateTime,
-  DEFAULT_RUBRIC, DEFAULT_SETTINGS, AGE_GROUPS, GENDERS, BRANCHES, loadCategories, loadSettings, cache
+  DEFAULT_RUBRIC, DEFAULT_SETTINGS, AGE_GROUPS, LEGACY_AGE_GROUPS, ageGroupName, GENDERS, BRANCHES, loadCategories, loadSettings, cache
 } from "../core.js";
 import { loadQuran, surahOptions, describeSyllabus, buildCandidates, pageImageURL, pageSlotCount, slotBand } from "../quran.js";
 import { THEMES, FRAMES, frameEl } from "../frames.js";
@@ -250,7 +250,7 @@ export async function categories(view) {
       cats.length ? h("div.tbl-wrap", { style: { marginTop: "10px" } }, h("table.tbl",
         h("thead", h("tr", ["#", "ބައި", "ގޮފި", "ޢުމުރު", "ޖިންސު", "މުޤައްރަރު", "ސުވާލު", "ފޮޅުވަތް", "ރުބްރިކް", ""].map(x => h("th", x)))),
         h("tbody", cats.map(c => h("tr", h("td", c.order || ""), h("td", h("b", c.name)), h("td", BRANCHES[c.branch] || c.branch),
-          h("td", (AGE_GROUPS.find(a => a[0] === c.ageGroup) || [0, c.ageGroup || "-"])[1]),
+          h("td", ageGroupName(c.ageGroup)),
           h("td", c.gender === "M" ? "ފިރިހެން" : c.gender === "F" ? "އަންހެން" : "ދެބައި"),
           h("td.small", describeSyllabus(c.syllabus)), h("td", c.qCount), h("td", `${c.minLines}–${c.maxLines}`),
           h("td", (c.rubric || []).reduce((a, r) => a + (+r.max || 0), 0)),
@@ -265,7 +265,7 @@ export async function categories(view) {
       jaliDed: 1, khafiDed: 0.5, autoDeduct: true, hifzHintWords: 3, deductSteps: [0.25, 0.5, 1], openForRegistration: true };
     const nm = h("input", { value: c.name }), ord = h("input", { type: "number", value: c.order || 1 });
     const br = select(Object.entries(BRANCHES), c.branch);
-    const ag = select(AGE_GROUPS, c.ageGroup), gd = select([["", "ދެބައި"], ...GENDERS], c.gender || "");
+    const ag = select([...AGE_GROUPS, ...LEGACY_AGE_GROUPS.filter(a => a[0] === c.ageGroup)], c.ageGroup), gd = select([["", "ދެބައި"], ...GENDERS], c.gender || "");
     const sType = select([["juz", "ފޮތް (ޖުޒު) ވަކިން"], ["surah", "ސޫރަތް ވަކިން"], ["page", "ޞަފުޙާ ވަކިން"]], c.syllabus.type);
     const fromBox = h("div"), toBox = h("div");
     let sFrom, sTo;

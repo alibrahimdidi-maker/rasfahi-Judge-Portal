@@ -170,6 +170,10 @@ export async function applications(view) {
       h("div.grid3", field("މޯބައިލް (ލޮގިން)", h("input.ltr", { value: a.phone, disabled: true })), field("އީމެއިލް (ލޮގިން)", h("input.ltr", { value: a.email, disabled: true })), field("އިތުރު ފޯނު", inp("phone2", { class: "ltr" }))),
       h("div.grid3", field("މުއައްސަސާ", inp("institution")), field("މުއައްސަސާގެ ވައްތަރު", sel("instType", INST_TYPES)), field("ބައި", sel("categoryId", cats.map(c => [c.id, c.name])))),
       h("div.grid3", field("ބެލެނިވެރިޔާ", inp("guardianName")), field("ބެލެނިވެރިޔާގެ ފޯނު", inp("guardianPhone", { class: "ltr" })), field("ގުޅުން", inp("guardianRelation"))),
+      (a.idFront || a.idBack) ? h("div", h("h3", "އައިޑީ ކާޑު (ދެފުށް)"), h("div.grid2",
+        ...[["ކުރިމަތި", a.idFront], ["ފަހަތް", a.idBack]].map(([t, src]) => h("div", h("div.small.muted", t),
+          src ? h("a", { href: "#", onclick: (e) => { e.preventDefault(); const w = window.open(""); if (w) w.document.write(`<img src="${src}" style="max-width:100%">`); } },
+            h("img", { src, style: { width: "100%", borderRadius: "10px", border: "1px solid var(--line2)" } })) : h("div.empty", "ނެތް"))))) : h("p.tag.orange", "އައިޑީ ކާޑުގެ ފޮޓޯ ލާފައެއް ނުވޭ"),
       field("ނޯޓު (ހުށަހެޅި ފަރާތުން)", h("input", { value: a.notes || "", disabled: true })),
       d.dob ? h("p.small.muted", "ޢުމުރު: " + ageOn(d.dob) + " އަހަރު") : null,
       hist.length ? h("div", h("h3", "ތާރީޚު"), hist) : null);
@@ -365,7 +369,10 @@ export async function students(view) {
         h("td", s.categoryName), h("td", ageOn(s.dob)), h("td", s.institution), h("td", s.island), h("td.ltr", s.phone),
         h("td.small", sesName(s.sessionId) + (s.order ? " #" + s.order : "")),
         h("td", s.checkin ? h("span.tag.green", "✔") : ""),
-        h("td", canEdit() ? h("button.btn.sm", { onclick: () => edit(s) }, "އެޑިޓް") : null)))))));
+        h("td", h("div.row", { style: { gap: "4px", flexWrap: "nowrap" } },
+          canEdit() ? h("button.btn.sm", { onclick: () => edit(s) }, "އެޑިޓް") : null,
+          h("button.btn.sm" + (s.recording && s.recording.url ? ".green" : ""), { title: "ކިޔެވުމުގެ ރެކޯޑިންގ",
+            onclick: async () => { const m = await import("./archive.js"); m.recordingModal(s, () => draw()); } }, "🎥")))))))));
   }
   [fTxt, fCat, fGen, fInst, fSes, fCk].forEach(x => x.oninput = draw);
   function exportCSV() {
@@ -513,6 +520,29 @@ export async function students(view) {
 }
 
 // ------------------------------------------------------------ SESSIONS & SCHEDULE
+// ---- filters shared by sessions, schedule and prints
+const isFullQuran = (c) => !!c && c.syllabus && ((c.syllabus.type === "juz" && +c.syllabus.from <= 1 && +c.syllabus.to >= 30) || c.syllabus.type === "all");
+const BRANCH_OPTS = [["", "ހުރިހާ ގޮފި"], ["mushaf", "ބަލައިގެން"], ["hifz", "ނުބަލައި"], ["full", "މުޅި ޤުރްއާން"]];
+const catMatch = (c, f) => !!c && (!f.branch || (f.branch === "full" ? isFullQuran(c) : c.branch === f.branch)) && (!f.age || c.ageGroup === f.age);
+const studMatch = (st, f) => (!f.gender || st.gender === f.gender) && (!f.instType || st.instType === f.instType) &&
+  (!f.institution || String(st.institution || "").trim() === f.institution) && (!f.age || st.ageGroup === f.age) &&
+  (!f.branch || catMatch(catById(st.categoryId), { branch: f.branch }));
+function filterBar(studs, init = {}, onChange = () => {}) {
+  const insts = [...new Set(studs.map(x => String(x.institution || "").trim()).filter(Boolean))].sort();
+  const ages = [...new Set(studs.map(x => x.ageGroup).filter(Boolean))];
+  const f = {
+    branch: select(BRANCH_OPTS, init.branch || ""),
+    age: select([["", "ހުރިހާ ޢުމުރުފުރާ"], ...AGE_GROUPS.filter(a => ages.includes(a[0]) || a[0] === init.age)], init.age || ""),
+    gender: select([["", "ދެ ޖިންސު"], ...GENDERS], init.gender || ""),
+    instType: select([["", "ހުރިހާ ވައްތަރެއްގެ މުއައްސަސާ"], ...INST_TYPES], init.instType || ""),
+    institution: select([["", "ހުރިހާ މުއައްސަސާއެއް"], ...insts.map(i => [i, i])], init.institution || "")
+  };
+  Object.values(f).forEach(x => x.onchange = onChange);
+  return { el: h("div.filters.sched-filters", ...Object.values(f)), val: () => Object.fromEntries(Object.entries(f).map(([k, x]) => [k, x.value])) };
+}
+const filterText = (f) => [f.branch && BRANCH_OPTS.find(b => b[0] === f.branch)[1], f.age && ageGroupName(f.age), f.gender && genderName(f.gender),
+  f.instType && instTypeName(f.instType), f.institution].filter(Boolean).join(" • ");
+
 // ---- Dhivehi day names and number dropdowns
 const DAYS_DV = ["އާދިއްތަ", "ހޯމަ", "އަންގާރަ", "ބުދަ", "ބުރާސްފަތި", "ހުކުރު", "ހޮނިހިރު"];
 export const dayName = (iso) => { const d = new Date(iso + "T00:00:00"); return isNaN(d) ? "" : DAYS_DV[d.getDay()]; };
@@ -584,7 +614,14 @@ export async function sessions(view) {
       s.reportBefore != null ? String(s.reportBefore) : "30");
     const capSel = select(numOpts(1, 200, " ދަރިވަރުން"), String(s.capacity || 25));
     const pNote = h("input", { value: s.publicNote || "", placeholder: "މިސާލު: އައިޑީ ކާޑު ގެންނަވާ" });
-    const catChecks = cats.map(c => { const cb = h("input", { type: "checkbox", value: c.id }); cb.checked = (s.categoryIds || []).includes(c.id); return h("label.row", cb, c.name); });
+    const catChecks = cats.map(c => { const cb = h("input", { type: "checkbox", value: c.id }); cb.checked = (s.categoryIds || []).includes(c.id);
+      const l = h("label.row", cb, c.name, h("span.small.muted", `  (${BRANCHES[c.branch] || ""}${isFullQuran(c) ? " • މުޅި ޤުރްއާން" : ""})`)); l.dataset.cat = c.id; return l; });
+    const fb = filterBar(studs, s.studentFilter || {}, () => {
+      const v = fb.val();
+      catChecks.forEach(l => { const c = catById(l.dataset.cat); l.style.display = catMatch(c, v) || l.querySelector("input").checked ? "" : "none"; });
+      cnt.textContent = `މި ފިލްޓަރަށް ދިމާވާ ދަރިވަރުން: ${studs.filter(st => studMatch(st, v) && catMatch(catById(st.categoryId), v)).length}`;
+    });
+    const cnt = h("div.small.muted");
     const ch = select([["", "— ހޮވާ —"], ...chiefs.map(u => [u.email, u.name])], s.chiefEmail);
     const jBox = h("div");
     const jSel = (s.judges || []).slice().sort((a, b) => a.slot - b.slot);
@@ -603,6 +640,7 @@ export async function sessions(view) {
       h("div.grid2", field("ސެޝަނުގެ ނަން (މިސާލު: ހެނދުނު ދަންފަޅި 1)", nm), field("ތަން / ހޯލް", vn)),
       h("div.grid3", field("ތާރީޚް", dt), field("ފަށާ ވަގުތު", tm), field("ދަރިވަރުން ހާޟިރުވާންވީ", rp)),
       h("div.grid2", field("ސެޝަނަކަށް ދަރިވަރުން (އެންމެ ގިނަވެގެން)", capSel), field("ދަރިވަރުންނަށް ނޯޓު (ފޯމުގެ ސްކްރީނުގައި ފެންނާނެ)", pNote)),
+      h("h3", "ދަރިވަރުން ފިލްޓަރު (ގޮފި • ޢުމުރުފުރާ • ޖިންސު • މުއައްސަސާ)"), fb.el, cnt,
       h("h3", "ބައިތައް"), h("div.grid3", catChecks),
       h("div.grid2", field("ޗީފް ޖަޖު", ch), h("div", h("h3", "ޖަޖުން (ތަރުތީބުން)"), jBox))),
       [...(s0 ? [{ label: "🗑", cls: "red", onClick: async () => {
@@ -621,7 +659,7 @@ export async function sessions(view) {
         const data = { competitionId: S.settings.activeCompetitionId, name: nm.value.trim(), date: dt.value, time: tm.value, venue: vn.value.trim(),
           categoryIds: catIds, chiefEmail: ch.value, chiefName: chief ? chief.name : "", judges: jSel, judgeEmails: jSel.map(j => j.email),
           reportBefore: rp.value === "" ? null : +rp.value, reportTime: rp.value === "" ? "" : addMinutes(tm.value, -(+rp.value)),
-          capacity: +capSel.value, publicNote: pNote.value.trim(), updatedAt: serverTimestamp() };
+          capacity: +capSel.value, publicNote: pNote.value.trim(), studentFilter: fb.val(), updatedAt: serverTimestamp() };
         if (!s0) Object.assign(data, { status: "planned", order: [], createdAt: serverTimestamp() });
         const id = s0 ? s0.id : "S" + dt.value.replace(/-/g, "") + "_" + Math.random().toString(36).slice(2, 6);
         await setDoc(doc(db, "sessions", id), data, { merge: true });
@@ -631,8 +669,10 @@ export async function sessions(view) {
     if (ok) { cache.sessions = null; load(); }
   }
   async function assign(s) {
-    const eligible = studs.filter(st => (s.categoryIds || []).includes(st.categoryId) && st.status !== "withdrawn");
-    let order = (s.order || []).filter(id => eligible.find(e => e.id === id));
+    const eligibleAll = studs.filter(st => (s.categoryIds || []).includes(st.categoryId) && st.status !== "withdrawn");
+    let eligible = eligibleAll.filter(st => studMatch(st, s.studentFilter || {}));
+    const afb = filterBar(eligibleAll, s.studentFilter || {}, () => { eligible = eligibleAll.filter(st => studMatch(st, afb.val())); draw2(); });
+    let order = (s.order || []).filter(id => eligibleAll.find(e => e.id === id));
     const listBox = h("div"), poolBox = h("div");
     const byId = (id) => studs.find(x => x.id === id) || {};
     const other = (st) => st.sessionId && st.sessionId !== s.id ? (list.find(x => x.id === st.sessionId) || {}).name : "";
@@ -652,7 +692,7 @@ export async function sessions(view) {
         h("div.grow", st.name, h("div.small.muted", st.regNo + " • " + st.categoryName + (other(st) ? " • ⚠ " + other(st) : ""))), h("span", "+"))));
     };
     draw2();
-    const ok = await modal("ދަރިވަރުން — " + s.name, h("div",
+    const ok = await modal("ދަރިވަރުން — " + s.name, h("div", afb.el,
       h("div.row", h("button.btn.sm", { onclick: () => { order.sort((a, b) => String(byId(a).regNo).localeCompare(String(byId(b).regNo))); draw2(); } }, "ރެޖި އަށް ތަރުތީބު"),
         h("button.btn.sm", { onclick: () => { const r = new Uint32Array(order.length); crypto.getRandomValues(r);
           for (let i = order.length - 1; i > 0; i--) { const j = r[i] % (i + 1); [order[i], order[j]] = [order[j], order[i]]; } draw2(); } }, "🎲 ރެންޑަމް ތަރުތީބު"),
@@ -673,6 +713,7 @@ export async function sessions(view) {
   }
   async function autoSchedule() {
     const catSel = select([["*", "ހުރިހާ ބައެއް (ކޮންމެ ބައެއް ވަކިވަކި)"], ...cats.map(c => [c.id, c.name])], "*");
+    const sfb = filterBar(studs, {}, () => showPrev());
     const dt = h("input", { type: "date", value: todayISO() }), tm = h("input", { type: "time", value: "09:00" });
     const cap = select(numOpts(1, 200, " ދަރިވަރުން"), "25");
     const perDay = select(numOpts(1, 6, " ސެޝަން"), "1");
@@ -684,8 +725,9 @@ export async function sessions(view) {
     const ch = select([["", "— ޗީފް ޖަޖު —"], ...chiefs.map(u => [u.email, u.name])], "");
     const jChecks = judges.map(u => { const c = h("input", { type: "checkbox", value: u.email }); return h("label.row", c, u.name); });
     const prev = h("div.small.muted", { style: { marginTop: "8px" } });
-    const pools = () => (catSel.value === "*" ? cats : cats.filter(c => c.id === catSel.value))
-      .map(c => ({ cat: c, pool: studs.filter(st => st.categoryId === c.id && !st.sessionId && st.status !== "withdrawn") })).filter(x => x.pool.length);
+    const pools = () => { const v = sfb.val();
+      return (catSel.value === "*" ? cats : cats.filter(c => c.id === catSel.value)).filter(c => catMatch(c, v))
+        .map(c => ({ cat: c, pool: studs.filter(st => st.categoryId === c.id && !st.sessionId && st.status !== "withdrawn" && studMatch(st, v)) })).filter(x => x.pool.length); };
     const showPrev = () => {
       const ps = pools(), n = +cap.value;
       const total = ps.reduce((a, x) => a + x.pool.length, 0), sesN = ps.reduce((a, x) => a + Math.ceil(x.pool.length / n), 0);
@@ -694,6 +736,7 @@ export async function sessions(view) {
     [catSel, cap, perDay].forEach(x => x.onchange = showPrev); showPrev();
     const ok = await modal("⚡ އޮޓޯ ޝެޑިއުލް — ސެޝަނަކަށް ނުލެވޭ ދަރިވަރުން ބަހާލާ", h("div",
       h("div.grid2", field("ބައި", catSel), field("ސެޝަނަކަށް ދަރިވަރުން", cap)),
+      h("div.small.muted", "ފިލްޓަރު (ގޮފި، މުޅި ޤުރްއާން، ޢުމުރުފުރާ، ޖިންސު، މުއައްސަސާ):"), sfb.el,
       h("div.grid3", field("ފަށާ ތާރީޚް", dt), field("ފުރަތަމަ ސެޝަން ފަށާ ގަޑި", tm), field("ދަރިވަރުން ހާޟިރުވާންވީ", rp)),
       h("div.grid3", field("ދުވަހަކަށް ސެޝަން", perDay), field("ސެޝަންތަކުގެ ދެމެދު", gap), field("ތަރުތީބު", orderBy)),
       h("div.grid2", field("ތަން", vn), field("ދަރިވަރުންނަށް ނޯޓު", pNote)),
@@ -722,7 +765,8 @@ export async function sessions(view) {
           for (let k = 0; k * n < pool.length; k++) {
             const part = pool.slice(k * n, k * n + n), when = nextSlot();
             const id = "S" + when.date.replace(/-/g, "") + "_" + when.time.replace(":", "") + "_" + Math.random().toString(36).slice(2, 6);
-            const data = { competitionId: S.settings.activeCompetitionId, name: `${cat.name} — ${k + 1}`, date: when.date, time: when.time,
+            const ft = filterText(sfb.val());
+            const data = { competitionId: S.settings.activeCompetitionId, name: `${cat.name}${ft ? " (" + ft + ")" : ""} — ${k + 1}`, date: when.date, time: when.time, studentFilter: sfb.val(),
               reportBefore: rp.value === "" ? null : +rp.value, reportTime: rp.value === "" ? "" : addMinutes(when.time, -(+rp.value)),
               venue: vn.value.trim(), publicNote: pNote.value.trim(), capacity: n,
               categoryIds: [cat.id], chiefEmail: chief.email, chiefName: chief.name, judges: js, judgeEmails: js.map(j => j.email), status: "planned",
@@ -753,17 +797,22 @@ export async function prints(view) {
   const fGen = select([["", "ދެ ޖިންސު"], ...GENDERS], "");
   const fInst = select([["", "ހުރިހާ މުއައްސަސާ"], ...INST_TYPES], "");
   const fCk = select([["", "ޗެކްއިން: ހުރިހާ"], ["in", "ޗެކްއިން ވެއްޖެ"], ["out", "ޗެކްއިން ނުވާ"]], "");
+  const fBr = select(BRANCH_OPTS, "");
+  const agesP = [...new Set(studs.map(x => x.ageGroup).filter(Boolean))];
+  const fAge = select([["", "ހުރިހާ ޢުމުރުފުރާ"], ...AGE_GROUPS.filter(a => agesP.includes(a[0]))], "");
+  const fInstName = select([["", "ހުރިހާ މުއައްސަސާއެއް"], ...[...new Set(studs.map(x => String(x.institution || "").trim()).filter(Boolean))].sort().map(i => [i, i])], "");
   const sigN = select([["3", "3 ސޮއި"], ["5", "5 ސޮއި"], ["7", "7 ސޮއި"]], "3");
   const pick = () => studs.filter(s => (!fSes.value || s.sessionId === fSes.value) && (!fCat.value || s.categoryId === fCat.value) &&
-    (!fGen.value || s.gender === fGen.value) && (!fInst.value || s.instType === fInst.value) && (!fCk.value || (fCk.value === "in" ? !!s.checkin : !s.checkin)))
+    (!fGen.value || s.gender === fGen.value) && (!fInst.value || s.instType === fInst.value) && (!fCk.value || (fCk.value === "in" ? !!s.checkin : !s.checkin)) &&
+    studMatch(s, { branch: fBr.value, age: fAge.value, institution: fInstName.value }))
     .sort((a, b) => fSes.value ? (a.order || 0) - (b.order || 0) : String(a.regNo).localeCompare(String(b.regNo)));
   const sub = () => [fSes.value && sessionLabel(sess.find(s => s.id === fSes.value)), fCat.value && catById(fCat.value).name, fGen.value && genderName(fGen.value),
-    fInst.value && instTypeName(fInst.value)].filter(Boolean).join(" • ");
+    fInst.value && instTypeName(fInst.value), fBr.value && BRANCH_OPTS.find(b => b[0] === fBr.value)[1], fAge.value && ageGroupName(fAge.value), fInstName.value].filter(Boolean).join(" • ");
   const sesById = Object.fromEntries(sess.map(s => [s.id, s]));
   const btn = (t, fn) => h("button.btn.lg", { onclick: () => { const rows = pick(); if (!rows.length) return toast("ލިސްޓުގައި ދަރިވަރަކު ނެތް", "warn"); fn(rows); } }, t);
   const signers = () => Array.from({ length: +sigN.value }, (_, i) => i === 0 ? "ޗީފް ޖަޖު" : "ޖަޖު " + i);
   view.append(h("div.card", h("h2", "ލިސްޓާއި ޕްރިންޓް — ފިލްޓަރ ކޮށްގެން"),
-    h("div.filters", fSes, fCat, fGen, fInst, fCk, sigN),
+    h("div.filters", fSes, fCat, fBr, fAge, fGen, fInst, fInstName, fCk, sigN),
     h("div.grid3",
       btn("📋 ސެޝަން ލިސްޓު", rows => printDoc("ސެޝަން ލިސްޓު", tableHTML([
         { t: "#", cls: "num", v: (r, i) => r.order || i + 1 },
